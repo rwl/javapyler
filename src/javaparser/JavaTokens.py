@@ -1,0 +1,276 @@
+AdditiveExpression=4
+Annotation=5
+AnnotationArgument=6
+AnnotationMethodDeclaration=7
+Annotations=8
+AnnotationTypeBody=9
+AnnotationTypeDeclaration=10
+Arguments=11
+ArrayAccess=12
+ArrayCreator=13
+ArrayInitializer=14
+AssignExpr=15
+BitAndExpression=16
+BitOrExpression=17
+BitXorExpression=18
+Block=19
+CastExpression=20
+ClassBody=21
+ClassBlock=22
+ClassCreator=23
+ClassDeclaration=24
+ClassOrInterfaceType=25
+CompilationUnit=26
+ConditionalAndExpression=27
+ConditionalExpression=28
+ConditionalOrExpression=29
+EnhancedForVar=30
+EnhancedForExpr=31
+EnhancedForStmt=32
+EnumBody=33
+EnumConstant=34
+EnumDeclaration=35
+EqualityExpression=36
+Expression=37
+FieldDeclaration=38
+ForInit=39
+ForExpr=40
+ForUpdate=41
+ForStmt=42
+FormalParameters=43
+InterfaceBody=44
+InterfaceDeclaration=45
+InterfaceFieldDeclaration=46
+InterfaceMethodDeclaration=47
+Label=48
+LocalVariableDeclaration=49
+MethodDeclaration=50
+Modifiers=51
+MultiplicativeExpression=52
+ParameterDecl=53
+ParExpression=54
+PostOperator=55
+PrimitiveType=56
+RelationalExpression=57
+Selector=58
+ShiftExpression=59
+Statement=60
+SuperSuffix=61
+SwitchEntry=62
+Type=63
+TypeArguments=64
+TypedSuffix=65
+TypeList=66
+TypeParameters=67
+UnaryExpression=68
+VariableDeclarator=69
+IDENTIFIER=70
+INTLITERAL=71
+LONGLITERAL=72
+FLOATLITERAL=73
+DOUBLELITERAL=74
+CHARLITERAL=75
+STRINGLITERAL=76
+TRUE=77
+FALSE=78
+NULL=79
+IntegerNumber=80
+LongSuffix=81
+HexPrefix=82
+HexDigit=83
+Exponent=84
+NonIntegerNumber=85
+FloatSuffix=86
+DoubleSuffix=87
+EscapeSequence=88
+WS=89
+COMMENT=90
+LINE_COMMENT=91
+ABSTRACT=92
+ASSERT=93
+BOOLEAN=94
+BREAK=95
+BYTE=96
+CASE=97
+CATCH=98
+CHAR=99
+CLASS=100
+CONST=101
+CONTINUE=102
+DEFAULT=103
+DO=104
+DOUBLE=105
+ELSE=106
+ENUM=107
+EXTENDS=108
+FINAL=109
+FINALLY=110
+FLOAT=111
+FOR=112
+GOTO=113
+IF=114
+IMPLEMENTS=115
+IMPORT=116
+INSTANCEOF=117
+INT=118
+INTERFACE=119
+LONG=120
+NATIVE=121
+NEW=122
+PACKAGE=123
+PRIVATE=124
+PROTECTED=125
+PUBLIC=126
+RETURN=127
+SHORT=128
+STATIC=129
+STRICTFP=130
+SUPER=131
+SWITCH=132
+SYNCHRONIZED=133
+THIS=134
+THROW=135
+THROWS=136
+TRANSIENT=137
+TRY=138
+VOID=139
+VOLATILE=140
+WHILE=141
+LPAREN=142
+RPAREN=143
+LBRACE=144
+RBRACE=145
+LBRACKET=146
+RBRACKET=147
+SEMI=148
+COMMA=149
+DOT=150
+ELLIPSIS=151
+EQ=152
+BANG=153
+TILDE=154
+QUES=155
+COLON=156
+EQEQ=157
+AMPAMP=158
+BARBAR=159
+PLUSPLUS=160
+SUBSUB=161
+PLUS=162
+SUB=163
+STAR=164
+SLASH=165
+AMP=166
+BAR=167
+CARET=168
+PERCENT=169
+PLUSEQ=170
+SUBEQ=171
+STAREQ=172
+SLASHEQ=173
+AMPEQ=174
+BAREQ=175
+CARETEQ=176
+PERCENTEQ=177
+MONKEYS_AT=178
+BANGEQ=179
+GT=180
+LT=181
+IdentifierStart=182
+IdentifierPart=183
+SurrogateIdentifer=184
+
+strings = {
+    'package':123,
+    ';':148,
+    'import':116,
+    'static':129,
+    '.':150,
+    '*':164,
+    'public':126,
+    'protected':125,
+    'private':124,
+    'abstract':92,
+    'final':109,
+    'native':121,
+    'synchronized':133,
+    'transient':137,
+    'volatile':140,
+    'strictfp':130,
+    'class':100,
+    'extends':108,
+    'implements':115,
+    '<':181,
+    ',':149,
+    '>':180,
+    '&':166,
+    'enum':107,
+    '{':144,
+    '}':145,
+    'interface':119,
+    'throws':136,
+    'void':139,
+    '[':146,
+    ']':147,
+    '=':152,
+    'boolean':94,
+    'char':99,
+    'byte':96,
+    'short':128,
+    'int':118,
+    'long':120,
+    'float':111,
+    'double':105,
+    '?':155,
+    'super':131,
+    '(':142,
+    ')':143,
+    '...':151,
+    'this':134,
+    '@':178,
+    'default':103,
+    'assert':93,
+    ':':156,
+    'if':114,
+    'else':106,
+    'while':141,
+    'do':104,
+    'switch':132,
+    'return':127,
+    'throw':135,
+    'break':95,
+    'continue':102,
+    'case':97,
+    'try':138,
+    'finally':110,
+    'catch':98,
+    'for':112,
+    '+=':170,
+    '-=':171,
+    '*=':172,
+    '/=':173,
+    '&=':174,
+    '|=':175,
+    '^=':176,
+    '%=':177,
+    '||':159,
+    '&&':158,
+    '|':167,
+    '^':168,
+    '==':157,
+    '!=':179,
+    'instanceof':117,
+    '+':162,
+    '-':163,
+    '/':165,
+    '%':169,
+    '++':160,
+    '--':161,
+    '~':154,
+    '!':153,
+    'new':122,
+}
+
+rev_strings = {}
+for k, v in strings.iteritems():
+    rev_strings[v] = k

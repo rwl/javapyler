@@ -1,0 +1,8 @@
+These files are taken from python2.5.
+
+The following two are here for use with jython:
+optparse.py
+textwrap.py
+
+Also for use with jython, the file ast.py. But since it's here,
+added some functionality for comments.

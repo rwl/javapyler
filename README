@@ -1,0 +1,47 @@
+
+This a not even alpha release.
+
+Lots of untested stuff
+
+
+Install
+=======
+
+Download antlr-3.3-complete.jar from http://www.antlr.org/
+	http://www.antlr.org/download/antlr-3.3-complete.jar
+
+Put it in src/javaparser/
+
+Install jython:
+sudo apt-get install jython
+
+and run bootstrap.py
+
+# Copy and paste:
+# wget http://www.antlr.org/download/antlr-3.3-complete.jar
+# mv antlr-3.3-complete.jar src/javaparser/
+# apt-get install jython
+# python bootstrap
+
+
+
+Now you should have a bin/javapyler and a bin/gwtpyler
+
+See src/gwtpyler.cfg for an example config file
+
+There's a javaparser.jar in the repo, bit if you want to generate
+it yourself:
+cd src/javaparser
+./build-java.sh
+
+
+Example usage for gwtpyler:
+Edit (a copy of) gwtpyler.cfg and put the correct values
+for src and output in the [DEFAULT] section.
+
+Then:
+bin/gwtpyler --config gwtpyler.cfg
+
+
+The contents of src/java.py should go to the __pyjamas__.py 
+(for desktop) and to the translator __pyjamas__ for pyjs.
