@@ -8,7 +8,8 @@ base = os.path.dirname(base)
 javapyler = os.path.join('bin', 'javapyler')
 gwtpyler = os.path.join('bin', 'gwtpyler')
 
-os.mkdir(os.path.join(base, 'bin'))
+if not os.path.isdir(os.path.join(base, 'bin')):
+    os.mkdir(os.path.join(base, 'bin'))
 
 open(javapyler, 'w').write('''\
 #!/bin/sh
