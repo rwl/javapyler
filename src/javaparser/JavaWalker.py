@@ -195,7 +195,7 @@ class JavaWalker(object):
                 return text
         return None
 
-    def retrieveComment(self, token, start=None, stop=None):
+    def retrieveComment(self, token, start=None, stop=None, trailing=True):
         comments = []
         if token is None:
             idx = -1
@@ -220,6 +220,8 @@ class JavaWalker(object):
                 if idx > end:
                     break
                 continue
+            if not trailing and idx > end:
+                break
             if not t in self.comments:
                 continue
             text = t.getText()
@@ -723,13 +725,22 @@ class JavaWalker(object):
                 update = self.dispatch(c)
             else:
                 self.unknown_token(c)
+        # Two ranges of comments. One just after the for statement
+        # (begining of block) and one after finishing the for statement
+        # (after the for block)
+        comment_list = []
+        comment_list.append(self.retrieveComment(token, trailing=False))
+        comment_list.append(self.retrieveComment(token))
         if enhanced:
-            return self.node(
+            node = self.node(
                 token, ast.ForEach, init, expr, nodes
             )
-        return self.node(
-            token, ast.For, init, expr, update, nodes
-        )
+        else:
+            node = self.node(
+                token, ast.For, init, expr, update, nodes
+            )
+        node.comments = comment_list
+        return node
 
     def walk_ForExpr(self, token, children):
         assert len(children) == 1
@@ -813,6 +824,7 @@ class JavaWalker(object):
             then = [then]
         if isinstance(else_, ast.Node):
             else_ = [else_]
+        comment_list.append(self.retrieveComment(token, trailing=False))
         comment_list.append(self.retrieveComment(token))
         node = self.node(token, ast.If, test, then, else_)
         node.comments = comment_list

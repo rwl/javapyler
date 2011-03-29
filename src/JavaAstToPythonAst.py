@@ -834,7 +834,7 @@ class JavaAstToPythonAst(object):
 
     def node(self, java_node, py_node):
         if java_node.comments:
-            # Track the nodes doen, in case we vitit this multiple times
+            # Track the nodes done, in case we vitit this multiple times
             if not hasattr(py_node, 'comment_nodes'):
                 py_node.comment_nodes = []
             if java_node not in py_node.comment_nodes:
@@ -1989,10 +1989,10 @@ class JavaAstToPythonAst(object):
             body = ast.Stmt([ast.Pass()])
         else:
             body = self.stmt(e.nodes, True)
-        # Attach comments to an empty node
+        # Attach comments from block top to an empty node
         empty = ast.EmptyNode()
         if e.comments:
-            empty.comments = [self.parseComment(c) for c in e.comments]
+            empty.comments = [self.parseComment(c) for c in e.comments[0]]
         else:
             e.comments = None
         empty.comment_nodes = [e]
@@ -2024,6 +2024,15 @@ class JavaAstToPythonAst(object):
             None,
         )
         stmt.nodes.append(node)
+        # Attach comments from block outer to an empty node
+        empty = ast.EmptyNode()
+        if e.comments:
+            empty.comments = [self.parseComment(c) for c in e.comments[1]]
+        else:
+            e.comments = None
+        empty.comment_nodes = [e]
+        # And append that to the statements
+        stmt.nodes.append(empty)
         self.checkLabel(stmt.nodes)
         return stmt
 
@@ -2042,6 +2051,15 @@ class JavaAstToPythonAst(object):
             body,
             None,
         )
+        if e.comments:
+            assert len(e.comments) == 2
+            node.comments = [
+                [self.parseComment(c) for c in e.comments[0]],
+                [],
+                [self.parseComment(c) for c in e.comments[1]],
+            ]
+        else:
+            node.comments = None
         nodes = [node]
         self.checkLabel(nodes)
         return self.stmt(nodes)
@@ -2071,17 +2089,19 @@ class JavaAstToPythonAst(object):
             else_,
         )
         # Change comments from flat list to
-        # (test, then)+ else
+        # (test, then)+ else rest
+        ntests = len(node.tests)
         node.comments = []
         node.comment_nodes = [e]
         comments = e.comments[:]
-        while len(comments) > 1:
+        while ntests > 0:
+            ntests -= 1
             c1 = comments.pop(0)
             c1 = [self.parseComment(c) for c in c1]
             c2 = comments.pop(0)
             c2 = [self.parseComment(c) for c in c2]
             node.comments.append((c1, c2))
-        if len(comments) == 1:
+        while len(comments) > 0:
             c1 = comments.pop(0)
             c1 = [self.parseComment(c) for c in c1]
             node.comments.append(c1)

@@ -77,8 +77,9 @@ class PyGen(object):
             self.addComment(node)
         return code
 
-    def addCode(self, code, newline=True):
-        self.addComment()
+    def addCode(self, code, newline=True, checkComment=True):
+        if checkComment:
+            self.addComment()
         if code is not None:
             if isinstance(code, basestring):
                 if newline:
@@ -90,19 +91,19 @@ class PyGen(object):
                     self.code[-1] += code
             else:
                 for c in code:
-                    self.addCode(c)
+                    self.addCode(c, checkComment=checkComment)
 
     def addDocCode(self, doc):
         if doc:
             lines = doc.split("\n")
             if len(lines) == 1:
-                self.addCode('"""%s"""' % doc.strip())
+                self.addCode('"""%s"""' % doc.strip(), checkComment=False)
             elif len(lines) > 1:
-                self.addCode('"""%s' % lines[0].strip())
+                self.addCode('"""%s' % lines[0].strip(), checkComment=False)
                 for line in lines[1:-1]:
-                    self.addCode(line.rstrip())
-                self.addCode("%s" % lines[-1].rstrip())
-                self.addCode('"""')
+                    self.addCode(line.rstrip(), checkComment=False)
+                self.addCode("%s" % lines[-1].rstrip(), checkComment=False)
+                self.addCode('"""', checkComment=False)
         self.addComment()
 
 
@@ -110,13 +111,13 @@ class PyGen(object):
         if isinstance(comment, basestring):
             lines = comment.split("\n")
             if len(lines) == 1:
-                self.addCode('# %s' % comment.strip())
+                self.addCode('# %s' % comment.strip(), checkComment=False)
             elif len(lines) > 1:
-                self.addCode('# %s' % lines[0].strip())
+                self.addCode('# %s' % lines[0].strip(), checkComment=False)
                 for line in lines[1:-1]:
-                    self.addCode('# %s' % line.rstrip())
-                self.addCode('# %s' % lines[-1].rstrip())
-                self.addCode('')
+                    self.addCode('# %s' % line.rstrip(), checkComment=False)
+                self.addCode('# %s' % lines[-1].rstrip(), checkComment=False)
+                self.addCode('', checkComment=False)
 
     def addComment(self, *nodes):
         while len(self.comment_stack) > 0:
@@ -305,16 +306,21 @@ class PyGen(object):
             ),
         )
         self.indent += 1
-        self.addComment(node)
+        if node.comments:
+            self.pushComment(node.comments[0])
         self.addCode(self.dispatch(node.body))
         self.addComment(node.body)
         self.indent -= 1
         if node.else_:
             self.addCode("else:")
             self.indent += 1
+            if node.comments:
+                self.pushComment(node.comments[1])
             self.addCode(self.dispatch(node.else_))
             self.addComment(node.else_)
             self.indent -= 1
+        if node.comments:
+            self.pushComment(node.comments[2])
 
     def astFrom(self, node):
         self.addCode(
@@ -406,6 +412,9 @@ class PyGen(object):
             self.addCode(self.dispatch(node.else_))
             self.addComment(node.else_)
             self.indent -= 1
+        while node.comments:
+            comment = node.comments.pop(0)
+            self.pushComment(comment)
 
     def astIfExp(self, node):
         test = self.dispatch(node.test)
