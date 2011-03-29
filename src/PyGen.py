@@ -108,6 +108,10 @@ class PyGen(object):
 
 
     def addCommentCode(self, comment):
+        if isinstance(comment, list):
+            for c in comment:
+                self.addCommentCode(c)
+            return
         if isinstance(comment, basestring):
             lines = comment.split("\n")
             if len(lines) == 1:
