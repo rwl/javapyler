@@ -407,6 +407,12 @@ class SwitchEntry(Node):
         Node.__init__(self, locals())
 
 
+class Synchronized(Node):
+
+    def __init__(self, expr, nodes):
+        Node.__init__(self, locals())
+
+
 class This(CallFunc):
 
     def __init__(self, arguments):

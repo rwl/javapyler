@@ -1215,6 +1215,12 @@ class JavaWalker(object):
                 nodes.append(self.dispatch(c))
         return self.node(token, ast.SwitchEntry, test, nodes)
 
+    def walk_synchronized(self, token, children, super=False):
+        expr = self.dispatch(children[0])
+        nodes = self.dispatch(children[1])
+        assert len(children) == 2
+        return self.node(token, ast.Synchronized, expr, nodes)
+
     def walk_this(self, token, children, super=False):
         if super:
             name = ['super']

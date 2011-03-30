@@ -2351,6 +2351,10 @@ class JavaAstToPythonAst(object):
         self.checkLabel(nodes)
         return self.stmt(nodes)
 
+    def visitSynchronized(self, e):
+        nodes = [self.dispatch(n) for n in e.nodes]
+        return self.stmt(nodes)
+
     def visitThis(self, e):
         node = self.fixCallFunc(
             e,
