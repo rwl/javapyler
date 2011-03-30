@@ -387,7 +387,12 @@ class JavaAstToPythonAst(object):
         if self.log_level >= level:
             line = [repr(a) for a in args]
             line = ' '.join(line)
-            sys.stdout.write("%s\n" % line)
+            sys.stderr.write("%s\n" % line)
+
+    def warning(self, lineno, *args):
+        line = [repr(a) for a in args]
+        line = ' '.join(line)
+        sys.stderr.write("%s(%s): %s\n" % (self.srcFile, lineno, line))
 
     def parseComment(self, comment):
         if comment is None:
@@ -963,7 +968,7 @@ class JavaAstToPythonAst(object):
                     # Segmented defaults
                     generic_args = True
                     #print 'generic_args 5'
-                    segmented_defauls.append(m)
+                    segmented_defaults.append(m)
                     m['segmented_defaults'] = segments
 
         for i in this_inits.itervalues():
@@ -1872,13 +1877,21 @@ class JavaAstToPythonAst(object):
         return class_node
 
     def visitEnumConstant(self, e):
-        assert len(e.nodes) == 0
         node = self.dispatch(e.name)
         name = e.name.name
+        right = ast.Const(name)
+        comments = None
+        if len(e.nodes) > 0:
+            self.warning(e.lineno, 'Cannot handle nodes in enum constants')
+            if len(e.nodes) == 1 and isinstance(e.nodes[0], jast.Method):
+                expr = e.nodes[0].body[0]
+                if isinstance(expr, jast.Return):
+                    right = self.dispatch(expr.expr)
+            right.comments = ['FIXME: EnumConstant (line: %s)' % e.lineno]
         if not e.arguments:
             node = ast.Assign(
                 [ast.AssName(name, 'OP_ASSIGN')],
-                ast.Const(name),
+                right,
             )
         else:
             print e.arguments

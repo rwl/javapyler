@@ -174,8 +174,8 @@ class PyGen(object):
             code = self.dispatch(dst)
             if code is None:
                 raise TypeError("astAssign code is None for %s" % dst)
-            self.addCode(code)
-        self.addCode(self.dispatch(node.expr))
+            self.addCode(code, checkComment=False)
+        self.addCode(self.dispatch(node.expr), checkComment=False)
         # Glue the first two lines
         first_line = self.code[idx] + self.code[idx + 1].lstrip()
         self.code[idx] = first_line

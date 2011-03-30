@@ -1,4 +1,4 @@
-// $ANTLR 3.3 Nov 30, 2010 12:50:56 Java.g 2011-03-30 13:20:40
+// $ANTLR 3.3 Nov 30, 2010 12:50:56 Java.g 2011-03-30 13:45:36
 
 import org.antlr.runtime.*;
 import java.util.Stack;
@@ -2349,7 +2349,7 @@ public class JavaParser extends Parser {
     };
 
     // $ANTLR start "enumDeclaration"
-    // Java.g:500:1: enumDeclaration : modifiers ( 'enum' ) IDENTIFIER ( 'implements' typeList )? enumBody -> ^( EnumDeclaration modifiers IDENTIFIER ( 'implements' typeList )? enumBody ) ;
+    // Java.g:500:1: enumDeclaration : modifiers ( 'enum' ) IDENTIFIER ( 'implements' typeList )? enumBody -> ^( EnumDeclaration modifiers IDENTIFIER ( ^( 'implements' typeList ) )? enumBody ) ;
     public final JavaParser.enumDeclaration_return enumDeclaration() throws RecognitionException {
         JavaParser.enumDeclaration_return retval = new JavaParser.enumDeclaration_return();
         retval.start = input.LT(1);
@@ -2377,7 +2377,7 @@ public class JavaParser extends Parser {
         RewriteRuleSubtreeStream stream_typeList=new RewriteRuleSubtreeStream(adaptor,"rule typeList");
         try {
             if ( state.backtracking>0 && alreadyParsedRule(input, 16) ) { return retval; }
-            // Java.g:501:5: ( modifiers ( 'enum' ) IDENTIFIER ( 'implements' typeList )? enumBody -> ^( EnumDeclaration modifiers IDENTIFIER ( 'implements' typeList )? enumBody ) )
+            // Java.g:501:5: ( modifiers ( 'enum' ) IDENTIFIER ( 'implements' typeList )? enumBody -> ^( EnumDeclaration modifiers IDENTIFIER ( ^( 'implements' typeList ) )? enumBody ) )
             // Java.g:501:9: modifiers ( 'enum' ) IDENTIFIER ( 'implements' typeList )? enumBody
             {
             pushFollow(FOLLOW_modifiers_in_enumDeclaration1750);
@@ -2444,19 +2444,26 @@ public class JavaParser extends Parser {
             RewriteRuleSubtreeStream stream_retval=new RewriteRuleSubtreeStream(adaptor,"rule retval",retval!=null?retval.tree:null);
 
             root_0 = (Object)adaptor.nil();
-            // 508:9: -> ^( EnumDeclaration modifiers IDENTIFIER ( 'implements' typeList )? enumBody )
+            // 508:9: -> ^( EnumDeclaration modifiers IDENTIFIER ( ^( 'implements' typeList ) )? enumBody )
             {
-                // Java.g:508:12: ^( EnumDeclaration modifiers IDENTIFIER ( 'implements' typeList )? enumBody )
+                // Java.g:508:12: ^( EnumDeclaration modifiers IDENTIFIER ( ^( 'implements' typeList ) )? enumBody )
                 {
                 Object root_1 = (Object)adaptor.nil();
                 root_1 = (Object)adaptor.becomeRoot((Object)adaptor.create(EnumDeclaration, "EnumDeclaration"), root_1);
 
                 adaptor.addChild(root_1, stream_modifiers.nextTree());
                 adaptor.addChild(root_1, stream_IDENTIFIER.nextNode());
-                // Java.g:508:51: ( 'implements' typeList )?
+                // Java.g:508:51: ( ^( 'implements' typeList ) )?
                 if ( stream_typeList.hasNext()||stream_IMPLEMENTS.hasNext() ) {
-                    adaptor.addChild(root_1, stream_IMPLEMENTS.nextNode());
-                    adaptor.addChild(root_1, stream_typeList.nextTree());
+                    // Java.g:508:51: ^( 'implements' typeList )
+                    {
+                    Object root_2 = (Object)adaptor.nil();
+                    root_2 = (Object)adaptor.becomeRoot(stream_IMPLEMENTS.nextNode(), root_2);
+
+                    adaptor.addChild(root_2, stream_typeList.nextTree());
+
+                    adaptor.addChild(root_1, root_2);
+                    }
 
                 }
                 stream_typeList.reset();

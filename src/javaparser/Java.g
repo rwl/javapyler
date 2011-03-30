@@ -505,7 +505,7 @@ enumDeclaration
         ('implements' typeList
         )?
         enumBody
-        -> ^(EnumDeclaration modifiers IDENTIFIER ('implements' typeList)?
+        -> ^(EnumDeclaration modifiers IDENTIFIER ^('implements' typeList)?
              enumBody)
     ;
     
