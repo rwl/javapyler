@@ -2078,6 +2078,15 @@ class JavaAstToPythonAst(object):
             node.comments.append(c1)
         return node
 
+    def visitInnerCreator(self, e):
+        left = self.dispatch(e.node)
+        self.block_self_scope = True
+        right = self.visitClassCreator(e)
+        if isinstance(left, AnonymousClass):
+            raise AstError(e, "AnonymousClass")
+        node = ast.Getattr(left, right)
+        return node
+
     def visitInstanceOfExpr(self, e):
         type_ = self.dispatch(e.type)
         assert isinstance(type_, Type)

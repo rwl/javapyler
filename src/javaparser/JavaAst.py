@@ -261,6 +261,12 @@ class Import(Node):
         Node.__init__(self, locals())
 
 
+class InnerCreator(Node):
+
+    def __init__(self, node, type, typeArguments, arguments, nodes):
+        Node.__init__(self, locals())
+
+
 class InstanceOfExpr(Node):
 
     def __init__(self, node, type):

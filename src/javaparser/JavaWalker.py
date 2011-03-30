@@ -88,6 +88,8 @@ class JavaWalker(object):
                 types.append(self.dispatch(c))
             elif type_ == tok.Annotations:
                 annotations = self.dispatch(c)
+            elif type_ == tok.AnnotationTypeDeclaration:
+                annotations = self.dispatch(c)
             else:
                 self.unknown_token(c)
         node = self.node(
@@ -502,6 +504,10 @@ class JavaWalker(object):
                 arguments = self.dispatch(c)
             elif type_ == tok.ClassBody:
                 nodes += self.dispatch(c)
+            elif type_ == tok.IDENTIFIER:
+                # innerCreator
+                types = [text, None]
+                cls_type = self.node(c, ast.ClassOrInterfaceType, types)
             else:
                 self.unknown_token(c)
         return self.node(
@@ -812,6 +818,9 @@ class JavaWalker(object):
             elif type_ == tok.TypedSuffix:
                 self.push(node)
                 node = self.dispatch(c)
+            elif type_ == tok.InnerCreator:
+                self.push(node)
+                node = self.dispatch(c)
             else:
                 self.unknown_token(c)
         #raise JavaAstError(token, "Invalid identifier %r, %r:%r" % (
@@ -862,6 +871,26 @@ class JavaWalker(object):
                 self.unknown_token(c)
         name = '.'.join(name)
         return self.node(token, ast.Import, name, wildcard, modifiers)
+
+    def walk_InnerCreator(self, token, children):
+        cls_type = None
+        arguments = None
+        typeArguments = None
+        nodes = []
+        for c, type_, text in children.iteritems():
+            if type_ == tok.IDENTIFIER:
+                types = [[text, None]]
+                cls_type = self.node(c, ast.ClassOrInterfaceType, types)
+            elif type_ == tok.Arguments:
+                arguments = self.dispatch(c)
+            elif type_ == tok.ClassBody:
+                nodes += self.dispatch(c)
+            else:
+                self.unknown_token(c)
+        left = self.pop()
+        return self.node(
+            token, ast.InnerCreator, left, cls_type, typeArguments, arguments, nodes,
+        )
 
     def walk_instanceof(self, token, children):
         left = self.pop()

@@ -331,6 +331,7 @@ tokens {
     ForUpdate;
     ForStmt;
     FormalParameters;
+    InnerCreator;
     InterfaceBody;
     InterfaceDeclaration;
     InterfaceFieldDeclaration;
@@ -1436,13 +1437,15 @@ createdName
     ;
 
 innerCreator  
-    :   '.'! 'new'
+    :   '.' 'new'
         (nonWildcardTypeArguments
         )?
         IDENTIFIER
         (typeArguments
         )?
         classCreatorRest
+        -> ^(InnerCreator (nonWildcardTypeArguments)? IDENTIFIER
+            (typeArguments)? classCreatorRest)
     ;
 
 
