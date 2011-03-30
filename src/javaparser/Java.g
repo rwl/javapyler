@@ -332,6 +332,7 @@ tokens {
     ForUpdate;
     ForStmt;
     FormalParameters;
+    IdentifierSuffixClass;
     InnerCreator;
     InterfaceBody;
     InterfaceDeclaration;
@@ -345,9 +346,9 @@ tokens {
     ParameterDecl;
     ParExpression;
     PostOperator;
+    PrimitiveType;
+    PrimitiveTypeClass;
     QualifiedName;
-    PrimitiveType;
-    PrimitiveType;
     RelationalExpression;
     Selector;
     ShiftExpression;
@@ -361,6 +362,7 @@ tokens {
     TypeParameters;
     UnaryExpression;
     VariableDeclarator;
+    VoidClass;
 }
 
 /********************************************************************************************
@@ -779,7 +781,7 @@ typeArgument
 
 qualifiedNameList 
     :   qualifiedName
-        (',' qualifiedName
+        (','! qualifiedName
         )*
     ;
 
@@ -1339,9 +1341,9 @@ primary
         ('[' ']'
         )*
         '.' 'class'
-        -> ^('class' primitiveType ('[')*)
+        -> ^(PrimitiveTypeClass primitiveType ('[')*)
     |   'void' '.' 'class'
-        -> ^('class' 'void')
+        -> ^(VoidClass 'void')
     ;
     
 
@@ -1360,12 +1362,13 @@ identifierSuffix
     :   ('[' ']'
         )+
         '.' 'class'
-        -> ^('class' ('[')+)
+        -> ^(IdentifierSuffixClass ('[')+)
     |   ('[' expression ']'
         )+
         -> ^(ArrayAccess (expression)+)
     |   arguments
-    |   '.'! 'class'
+    |   '.' 'class'
+        -> ^(IdentifierSuffixClass)
     |   '.' nonWildcardTypeArguments IDENTIFIER arguments
         -> ^(TypedSuffix IDENTIFIER nonWildcardTypeArguments arguments)
     |   '.'! 'this'

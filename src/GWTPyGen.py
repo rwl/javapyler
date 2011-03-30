@@ -5,6 +5,8 @@ from PyGen import PyGen
 class GWTPyGen(PyGen):
 
     def addCommentCode(self, comment):
+        if comment is None:
+            return
         if isinstance(comment, list):
             for c in comment:
                 self.addCommentCode(c)

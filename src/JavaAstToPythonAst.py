@@ -1781,6 +1781,17 @@ class JavaAstToPythonAst(object):
         names = [t[0] for t in e.types]
         return Type('.'.join(names))
 
+    def visitClassSuffix(self, e):
+        node = self.dispatch(e.node)
+        if not e.array:
+            if isinstance(node, Type):
+                node = ast.Name(node.name)
+            else:
+                node = ast.Getattr(node, '__class__')
+        else:
+            node = ast.Getattr(ast.Name('list'), '__class__')
+        return node
+
     def visitConditionalExpr(self, e):
         test = self.dispatch(e.test)
         then = self.dispatch(e.then)

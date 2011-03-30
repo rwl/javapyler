@@ -179,6 +179,12 @@ class ClassOrInterfaceType(TypeNode):
         Node.__init__(self, locals())
 
 
+class ClassSuffix(Node):
+
+    def __init__(self, node, array):
+        Node.__init__(self, locals())
+
+
 class Comment(Node):
 
     def __init__(self, text):

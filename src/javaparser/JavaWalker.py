@@ -824,6 +824,9 @@ class JavaWalker(object):
             elif type_ == tok.TypedSuffix:
                 self.push(node)
                 node = self.dispatch(c)
+            elif type_ == tok.IdentifierSuffixClass:
+                self.push(node)
+                node = self.dispatch(c)
             elif type_ == tok.InnerCreator:
                 self.push(node)
                 node = self.dispatch(c)
@@ -832,6 +835,13 @@ class JavaWalker(object):
         #raise JavaAstError(token, "Invalid identifier %r, %r:%r" % (
         #    token, c, type_))
         return node
+
+    def walk_IdentifierSuffixClass(self, token, children):
+        array = []
+        for c in children:
+            array.append('[]')
+        node = self.pop()
+        return self.node(token, ast.ClassSuffix, node, array)
 
     def walk_if(self, token, children):
         test = None
@@ -1128,7 +1138,17 @@ class JavaWalker(object):
         return self.node(token, ast.PostOperator, node, children[0].text)
 
     def walk_PrimitiveType(self, token, children):
-        return self.node(token, ast.PrimitiveType, children[0].text)
+        assert len(children) == 1
+        name = children[0].text
+        return self.node(token, ast.PrimitiveType, name)
+
+    def walk_PrimitiveTypeClass(self, token, children):
+        array = []
+        name = children[0].text
+        for c in children[1:]:
+            array.append('[]')
+        node = self.node(token, ast.PrimitiveType, name)
+        return self.node(token, ast.ClassSuffix, node, array)
 
     def walk_QualifiedName(self, token, children):
         return '.'.join([c.getText() for c in children])
@@ -1286,8 +1306,7 @@ class JavaWalker(object):
         return self.node(token, ast.Throw, expr)
 
     def walk_throws(self, token, children):
-        assert len(children) == 1
-        return self.dispatch(children[0])
+        return [self.dispatch(c) for c in children]
 
     def walk_try(self, token, children):
         nodes = []
