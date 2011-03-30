@@ -569,6 +569,7 @@ class JavaWalker(object):
     def walk_do(self, token, children):
         test = None
         node = None
+        comment_list = []
         for c, type_, text in children.iteritems():
             if node is None:
                 node = self.dispatch(c)
@@ -576,7 +577,11 @@ class JavaWalker(object):
                 test = self.dispatch(c)
             else:
                 self.unknown_token(c)
-        return self.node(token, ast.DoWhile, test, node)
+        comment_list.append(self.retrieveComment(token, trailing=False))
+        comment_list.append(self.retrieveComment(token))
+        node = self.node(token, ast.DoWhile, test, node)
+        node.comments = comment_list
+        return node
 
     def walk_else(self, token, children):
         nodes = []
@@ -1331,6 +1336,7 @@ class JavaWalker(object):
     def walk_while(self, token, children):
         test = None
         node = None
+        comment_list = []
         for c, type_, text in children.iteritems():
             if test is None and type_ == tok.ParExpression:
                 test = self.dispatch(c)
@@ -1338,7 +1344,11 @@ class JavaWalker(object):
                 nodes = self.dispatch(c)
             else:
                 self.unknown_token(c)
-        return self.node(token, ast.While, test, nodes)
+        comment_list.append(self.retrieveComment(token, trailing=False))
+        comment_list.append(self.retrieveComment(token))
+        node = self.node(token, ast.While, test, nodes)
+        node.comments = comment_list
+        return node
 
 
 if __name__ == '__main__':

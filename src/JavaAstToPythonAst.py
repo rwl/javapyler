@@ -167,8 +167,6 @@ class JavaAstToPythonAst(object):
         self.this_suffixes = []
         self.state_stack = []
         self.label_stack = []
-        self.comment_node = None
-        self.comment_range = (None, None)
         self.comments = []
         self.javadocs = []
         self.javalib = []
@@ -432,47 +430,6 @@ class JavaAstToPythonAst(object):
         if comment in self.comments:
             self.comments.remove(comment)
         node.doc = self.parseComment(comment)
-
-    def appendComment(self, node, comment):
-        if self.analysing:
-            return
-        if not comment:
-            return
-        if node.comments is None:
-            node.comments = []
-        if isinstance(comment, basestring):
-            node.comments.append(comment)
-        elif isinstance(comment, ast.Node):
-            if not comment.comments:
-                return
-            node.comments += comment.comments
-            if self.comment_node is comment:
-                self.comment_node = node
-        else:
-            node.comments += comment
-
-    def setCommentRange(self, *args):
-        return
-        old = self.comment_range
-        if args[0] is None:
-            self.comment_range = [None, None]
-            return old
-        if isinstance(args[0], int):
-            if len(args) == 1:
-                self.comment_range = [args[0], None]
-            else:
-                self.comment_range = [args[0], args[1]]
-            return old
-        start = args[0].lineno
-        end = args[0].getEndLine()
-        if len(args) == 1:
-            self.comment_range = [start, end]
-        else:
-            self.comment_range = [start, None]
-        return old
-
-    def getCommentRange(self):
-        return self.comment_range
 
     def collectGlobals(self, cu):
         def handleFile(fpath, impname=None):
@@ -1128,7 +1085,6 @@ class JavaAstToPythonAst(object):
                 childs = sortedChilds(m['childs'])
                 py_body = getChildInits(childs)
                 nodes = [ast.Pass()] + py_body
-                comment_range = self.setCommentRange(m['decl_ast'])
                 py_body.append(getBodyNodes(m))
                 if parent is None:
                     nodes = py_body + getNodes(childs)
@@ -1171,7 +1127,6 @@ class JavaAstToPythonAst(object):
                     childs = sortedChilds(m['childs'])
                     py_body = getChildInits(childs)
                     nodes = [comment_node] + py_body
-                    comment_range = self.setCommentRange(m['decl_ast'])
                     py_body.append(getBodyNodes(m))
                     nargs = len(m['java_args'])
                     stmt = self.stmt(py_body)
@@ -1848,7 +1803,6 @@ class JavaAstToPythonAst(object):
 
 
     def visitDoWhile(self, e):
-        comment_node = ast.Pass()
         nodes = []
         statevar, init = self.getTmpVar(ast.Const(True))
         nodes.append(init)
@@ -1863,9 +1817,13 @@ class JavaAstToPythonAst(object):
         )
         body.nodes.insert(0, init)
         node = ast.While(test, body, None)
-        node.comments = comment_node.comments
-        if self.comment_node is comment_node:
-            self.comment_node = node.comments
+        node.comment_nodes = [e]
+        if e.comments:
+            node.comments = [
+                [self.parseComment(c) for c in e.comments[0]],
+                [],
+                [self.parseComment(c) for c in e.comments[1]],
+            ]
         nodes = [node]
         self.checkLabel(nodes)
         return self.stmt(nodes)
@@ -2447,15 +2405,18 @@ class JavaAstToPythonAst(object):
         return a
 
     def visitWhile(self, e):
-        comment_node = ast.Pass()
         test = self.dispatch(e.test)
         if test is None:
             raise AstError(s, "No condition")
         body = self.stmt(e.nodes)
         node = ast.While(test,body,None)
-        node.comments = comment_node.comments
-        if self.comment_node is comment_node:
-            self.comment_node = node.comments
+        node.comment_nodes = [e]
+        if e.comments:
+            node.comments = [
+                [self.parseComment(c) for c in e.comments[0]],
+                [],
+                [self.parseComment(c) for c in e.comments[1]],
+            ]
         nodes = [node]
         self.checkLabel(nodes)
         return self.stmt(nodes)

@@ -564,6 +564,8 @@ class PyGen(object):
         idx = len(self.code)
         self.addCode("while (")
         self.indent += 1
+        if node.comments:
+            self.pushComment(node.comments.pop(0))
         self.addCode(self.dispatch(node.test))
         self.indent -= 1
         self.addCode("):")
@@ -582,9 +584,13 @@ class PyGen(object):
         self.indent -= 1
         if node.else_ is not None:
             self.addCode("else:")
+            if node.comments:
+                self.pushComment(node.comments.pop(0))
             self.indent += 1
             self.addCode(self.dispatch(node.else_))
             self.indent -= 1
+        if node.comments:
+            self.pushComment(node.comments.pop(0))
 
     def astXor(self, node):
         left = self.par_expr(node.left, self.dispatch(node.left))
