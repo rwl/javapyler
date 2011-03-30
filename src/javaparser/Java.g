@@ -343,6 +343,7 @@ tokens {
     ParameterDecl;
     ParExpression;
     PostOperator;
+    QualifiedName;
     PrimitiveType;
     PrimitiveType;
     RelationalExpression;
@@ -838,6 +839,7 @@ qualifiedName
     :   IDENTIFIER
         ('.' IDENTIFIER
         )*
+        -> ^(QualifiedName (IDENTIFIER)+)
     ;
 
 annotations 

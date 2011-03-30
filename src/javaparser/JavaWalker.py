@@ -86,6 +86,8 @@ class JavaWalker(object):
                 imports.append(self.dispatch(c))
             elif type_ == tok.InterfaceDeclaration:
                 types.append(self.dispatch(c))
+            elif type_ == tok.Annotations:
+                annotations = self.dispatch(c)
             else:
                 self.unknown_token(c)
         node = self.node(
@@ -287,6 +289,15 @@ class JavaWalker(object):
             else:
                 arguments += self.dispatch(c)
         return self.node(token, ast.Annotation, name, arguments)
+
+    def walk_Annotations(self, token, children):
+        annotations = []
+        for c, type_, text in children.iteritems():
+            if type_ == tok.Annotation:
+                annotations.append(self.dispatch(c))
+            else:
+                self.unknown_token(c)
+        return annotations
 
     def walk_AnnotationArgument(self, token, children):
         return [self.dispatch(c) for c in children]
@@ -1081,6 +1092,9 @@ class JavaWalker(object):
 
     def walk_PrimitiveType(self, token, children):
         return self.node(token, ast.PrimitiveType, children[0].text)
+
+    def walk_QualifiedName(self, token, children):
+        return '.'.join([c.getText() for c in children])
 
     def walk_RelationalExpression(self, token, children):
         return self.left_op_right(token, children, ast.RelationalExpr)
