@@ -867,6 +867,8 @@ class JavaWalker(object):
                 name.append(text)
             elif type_ == tok.STAR:
                 wildcard = '*'
+            elif type_ == tok.STATIC:
+                modifiers = ['static']
             else:
                 self.unknown_token(c)
         name = '.'.join(name)
