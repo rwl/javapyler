@@ -610,6 +610,12 @@ class JavaWalker(object):
                 nodes += node
         return nodes
 
+    def walk_ElementValueArrayInitializer(self, token, children):
+        elements = []
+        for c in children:
+            elements.append(self.dispatch(c))
+        return elements
+
     def walk_EnhancedForExpr(self, token, children):
         assert len(children) == 1
         return self.dispatch(children[0])
@@ -915,8 +921,8 @@ class JavaWalker(object):
                 nodes.append(self.dispatch(c))
             #elif type_ == tok.ClassBlock:
             #    nodes.append(self.dispatch(c))
-            #elif type_ == tok.EnumDeclaration:
-            #    nodes.append(self.dispatch(c))
+            elif type_ == tok.EnumDeclaration:
+                nodes.append(self.dispatch(c))
             else:
                 self.unknown_token(c)
         return nodes

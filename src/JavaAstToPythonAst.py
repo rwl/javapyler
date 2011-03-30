@@ -78,10 +78,6 @@ class IgnoreMethod(Exception):
     pass
 
 
-class IgnoreInterface(Exception):
-    pass
-
-
 class AnonymousClass(object):
 
     def __init__(self, cls_node, java_node, this_suffixes):
@@ -205,10 +201,7 @@ class JavaAstToPythonAst(object):
         self.class_names = [{}]
 
         for t in cu.types:
-            try:
-                nodes.append(self.dispatch(t))
-            except IgnoreInterface:
-                pass
+            nodes.append(self.dispatch(t))
 
         if self.javalib:
             self.javalib.sort()
@@ -2132,7 +2125,7 @@ class JavaAstToPythonAst(object):
             init = v.initializer
             if init is None:
                 pass
-            elif e.type.array and isinstance(init, list):
+            elif isinstance(init, list):
                 init = self.dispatch_list(init)
                 init = ast.List(init)
             else:

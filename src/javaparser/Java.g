@@ -317,6 +317,7 @@ tokens {
     ConditionalAndExpression;
     ConditionalExpression;
     ConditionalOrExpression;
+    ElementValueArrayInitializer;
     EnhancedForVar;
     EnhancedForExpr;
     EnhancedForStmt;
@@ -889,6 +890,7 @@ elementValueArrayInitializer
             (',' elementValue
             )*
         )? (',')? '}'
+        -> ^(ElementValueArrayInitializer (elementValue)*)
     ;
 
 

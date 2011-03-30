@@ -24,253 +24,254 @@ CompilationUnit=26
 ConditionalAndExpression=27
 ConditionalExpression=28
 ConditionalOrExpression=29
-EnhancedForVar=30
-EnhancedForExpr=31
-EnhancedForStmt=32
-EnumBody=33
-EnumConstant=34
-EnumDeclaration=35
-EqualityExpression=36
-Expression=37
-FieldDeclaration=38
-ForInit=39
-ForExpr=40
-ForUpdate=41
-ForStmt=42
-FormalParameters=43
-InnerCreator=44
-InterfaceBody=45
-InterfaceDeclaration=46
-InterfaceFieldDeclaration=47
-InterfaceMethodDeclaration=48
-Label=49
-LocalVariableDeclaration=50
-MethodDeclaration=51
-Modifiers=52
-MultiplicativeExpression=53
-ParameterDecl=54
-ParExpression=55
-PostOperator=56
-QualifiedName=57
-PrimitiveType=58
-RelationalExpression=59
-Selector=60
-ShiftExpression=61
-Statement=62
-SuperSuffix=63
-SwitchEntry=64
-Type=65
-TypeArguments=66
-TypedSuffix=67
-TypeList=68
-TypeParameters=69
-UnaryExpression=70
-VariableDeclarator=71
-IDENTIFIER=72
-INTLITERAL=73
-LONGLITERAL=74
-FLOATLITERAL=75
-DOUBLELITERAL=76
-CHARLITERAL=77
-STRINGLITERAL=78
-TRUE=79
-FALSE=80
-NULL=81
-IntegerNumber=82
-LongSuffix=83
-HexPrefix=84
-HexDigit=85
-Exponent=86
-NonIntegerNumber=87
-FloatSuffix=88
-DoubleSuffix=89
-EscapeSequence=90
-WS=91
-COMMENT=92
-LINE_COMMENT=93
-ABSTRACT=94
-ASSERT=95
-BOOLEAN=96
-BREAK=97
-BYTE=98
-CASE=99
-CATCH=100
-CHAR=101
-CLASS=102
-CONST=103
-CONTINUE=104
-DEFAULT=105
-DO=106
-DOUBLE=107
-ELSE=108
-ENUM=109
-EXTENDS=110
-FINAL=111
-FINALLY=112
-FLOAT=113
-FOR=114
-GOTO=115
-IF=116
-IMPLEMENTS=117
-IMPORT=118
-INSTANCEOF=119
-INT=120
-INTERFACE=121
-LONG=122
-NATIVE=123
-NEW=124
-PACKAGE=125
-PRIVATE=126
-PROTECTED=127
-PUBLIC=128
-RETURN=129
-SHORT=130
-STATIC=131
-STRICTFP=132
-SUPER=133
-SWITCH=134
-SYNCHRONIZED=135
-THIS=136
-THROW=137
-THROWS=138
-TRANSIENT=139
-TRY=140
-VOID=141
-VOLATILE=142
-WHILE=143
-LPAREN=144
-RPAREN=145
-LBRACE=146
-RBRACE=147
-LBRACKET=148
-RBRACKET=149
-SEMI=150
-COMMA=151
-DOT=152
-ELLIPSIS=153
-EQ=154
-BANG=155
-TILDE=156
-QUES=157
-COLON=158
-EQEQ=159
-AMPAMP=160
-BARBAR=161
-PLUSPLUS=162
-SUBSUB=163
-PLUS=164
-SUB=165
-STAR=166
-SLASH=167
-AMP=168
-BAR=169
-CARET=170
-PERCENT=171
-PLUSEQ=172
-SUBEQ=173
-STAREQ=174
-SLASHEQ=175
-AMPEQ=176
-BAREQ=177
-CARETEQ=178
-PERCENTEQ=179
-MONKEYS_AT=180
-BANGEQ=181
-GT=182
-LT=183
-IdentifierStart=184
-IdentifierPart=185
-SurrogateIdentifer=186
+ElementValueArrayInitializer=30
+EnhancedForVar=31
+EnhancedForExpr=32
+EnhancedForStmt=33
+EnumBody=34
+EnumConstant=35
+EnumDeclaration=36
+EqualityExpression=37
+Expression=38
+FieldDeclaration=39
+ForInit=40
+ForExpr=41
+ForUpdate=42
+ForStmt=43
+FormalParameters=44
+InnerCreator=45
+InterfaceBody=46
+InterfaceDeclaration=47
+InterfaceFieldDeclaration=48
+InterfaceMethodDeclaration=49
+Label=50
+LocalVariableDeclaration=51
+MethodDeclaration=52
+Modifiers=53
+MultiplicativeExpression=54
+ParameterDecl=55
+ParExpression=56
+PostOperator=57
+QualifiedName=58
+PrimitiveType=59
+RelationalExpression=60
+Selector=61
+ShiftExpression=62
+Statement=63
+SuperSuffix=64
+SwitchEntry=65
+Type=66
+TypeArguments=67
+TypedSuffix=68
+TypeList=69
+TypeParameters=70
+UnaryExpression=71
+VariableDeclarator=72
+IDENTIFIER=73
+INTLITERAL=74
+LONGLITERAL=75
+FLOATLITERAL=76
+DOUBLELITERAL=77
+CHARLITERAL=78
+STRINGLITERAL=79
+TRUE=80
+FALSE=81
+NULL=82
+IntegerNumber=83
+LongSuffix=84
+HexPrefix=85
+HexDigit=86
+Exponent=87
+NonIntegerNumber=88
+FloatSuffix=89
+DoubleSuffix=90
+EscapeSequence=91
+WS=92
+COMMENT=93
+LINE_COMMENT=94
+ABSTRACT=95
+ASSERT=96
+BOOLEAN=97
+BREAK=98
+BYTE=99
+CASE=100
+CATCH=101
+CHAR=102
+CLASS=103
+CONST=104
+CONTINUE=105
+DEFAULT=106
+DO=107
+DOUBLE=108
+ELSE=109
+ENUM=110
+EXTENDS=111
+FINAL=112
+FINALLY=113
+FLOAT=114
+FOR=115
+GOTO=116
+IF=117
+IMPLEMENTS=118
+IMPORT=119
+INSTANCEOF=120
+INT=121
+INTERFACE=122
+LONG=123
+NATIVE=124
+NEW=125
+PACKAGE=126
+PRIVATE=127
+PROTECTED=128
+PUBLIC=129
+RETURN=130
+SHORT=131
+STATIC=132
+STRICTFP=133
+SUPER=134
+SWITCH=135
+SYNCHRONIZED=136
+THIS=137
+THROW=138
+THROWS=139
+TRANSIENT=140
+TRY=141
+VOID=142
+VOLATILE=143
+WHILE=144
+LPAREN=145
+RPAREN=146
+LBRACE=147
+RBRACE=148
+LBRACKET=149
+RBRACKET=150
+SEMI=151
+COMMA=152
+DOT=153
+ELLIPSIS=154
+EQ=155
+BANG=156
+TILDE=157
+QUES=158
+COLON=159
+EQEQ=160
+AMPAMP=161
+BARBAR=162
+PLUSPLUS=163
+SUBSUB=164
+PLUS=165
+SUB=166
+STAR=167
+SLASH=168
+AMP=169
+BAR=170
+CARET=171
+PERCENT=172
+PLUSEQ=173
+SUBEQ=174
+STAREQ=175
+SLASHEQ=176
+AMPEQ=177
+BAREQ=178
+CARETEQ=179
+PERCENTEQ=180
+MONKEYS_AT=181
+BANGEQ=182
+GT=183
+LT=184
+IdentifierStart=185
+IdentifierPart=186
+SurrogateIdentifer=187
 
 strings = {
-    'package':125,
-    ';':150,
-    'import':118,
-    'static':131,
-    '.':152,
-    '*':166,
-    'public':128,
-    'protected':127,
-    'private':126,
-    'abstract':94,
-    'final':111,
-    'native':123,
-    'synchronized':135,
-    'transient':139,
-    'volatile':142,
-    'strictfp':132,
-    'class':102,
-    'extends':110,
-    'implements':117,
-    '<':183,
-    ',':151,
-    '>':182,
-    '&':168,
-    'enum':109,
-    '{':146,
-    '}':147,
-    'interface':121,
-    'throws':138,
-    'void':141,
-    '[':148,
-    ']':149,
-    '=':154,
-    'boolean':96,
-    'char':101,
-    'byte':98,
-    'short':130,
-    'int':120,
-    'long':122,
-    'float':113,
-    'double':107,
-    '?':157,
-    'super':133,
-    '(':144,
-    ')':145,
-    '...':153,
-    'this':136,
-    '@':180,
-    'default':105,
-    'assert':95,
-    ':':158,
-    'if':116,
-    'else':108,
-    'while':143,
-    'do':106,
-    'switch':134,
-    'return':129,
-    'throw':137,
-    'break':97,
-    'continue':104,
-    'case':99,
-    'try':140,
-    'finally':112,
-    'catch':100,
-    'for':114,
-    '+=':172,
-    '-=':173,
-    '*=':174,
-    '/=':175,
-    '&=':176,
-    '|=':177,
-    '^=':178,
-    '%=':179,
-    '||':161,
-    '&&':160,
-    '|':169,
-    '^':170,
-    '==':159,
-    '!=':181,
-    'instanceof':119,
-    '+':164,
-    '-':165,
-    '/':167,
-    '%':171,
-    '++':162,
-    '--':163,
-    '~':156,
-    '!':155,
-    'new':124,
+    'package':126,
+    ';':151,
+    'import':119,
+    'static':132,
+    '.':153,
+    '*':167,
+    'public':129,
+    'protected':128,
+    'private':127,
+    'abstract':95,
+    'final':112,
+    'native':124,
+    'synchronized':136,
+    'transient':140,
+    'volatile':143,
+    'strictfp':133,
+    'class':103,
+    'extends':111,
+    'implements':118,
+    '<':184,
+    ',':152,
+    '>':183,
+    '&':169,
+    'enum':110,
+    '{':147,
+    '}':148,
+    'interface':122,
+    'throws':139,
+    'void':142,
+    '[':149,
+    ']':150,
+    '=':155,
+    'boolean':97,
+    'char':102,
+    'byte':99,
+    'short':131,
+    'int':121,
+    'long':123,
+    'float':114,
+    'double':108,
+    '?':158,
+    'super':134,
+    '(':145,
+    ')':146,
+    '...':154,
+    'this':137,
+    '@':181,
+    'default':106,
+    'assert':96,
+    ':':159,
+    'if':117,
+    'else':109,
+    'while':144,
+    'do':107,
+    'switch':135,
+    'return':130,
+    'throw':138,
+    'break':98,
+    'continue':105,
+    'case':100,
+    'try':141,
+    'finally':113,
+    'catch':101,
+    'for':115,
+    '+=':173,
+    '-=':174,
+    '*=':175,
+    '/=':176,
+    '&=':177,
+    '|=':178,
+    '^=':179,
+    '%=':180,
+    '||':162,
+    '&&':161,
+    '|':170,
+    '^':171,
+    '==':160,
+    '!=':182,
+    'instanceof':120,
+    '+':165,
+    '-':166,
+    '/':168,
+    '%':172,
+    '++':163,
+    '--':164,
+    '~':157,
+    '!':156,
+    'new':125,
 }
 
 rev_strings = {}
