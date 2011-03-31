@@ -1421,18 +1421,14 @@ variableInitializer
     ;
 
 arrayInitializer
-    :   arrayInitializer1
-        -> ^(ArrayInitializer arrayInitializer1)
-    ;
-
-arrayInitializer1
-    :   '{'!
+    :   '{'
             (variableInitializer
-                (','! variableInitializer
+                (',' variableInitializer
                 )*
             )? 
-            (','!)? 
-        '}'!            //Yang's fix, position change.
+            (',')? 
+        '}'            //Yang's fix, position change.
+        -> ^(ArrayInitializer (variableInitializer)*)
     ;
 
 

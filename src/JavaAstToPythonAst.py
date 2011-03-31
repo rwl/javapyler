@@ -1923,6 +1923,9 @@ class JavaAstToPythonAst(object):
             else:
                 if init is None:
                     init = ast.Const(None)
+                elif isinstance(init, list):
+                    init = self.dispatch_list(init)
+                    init = ast.List(init)
                 else:
                     init = self.dispatch(init)
                     if isinstance(init, AnonymousClass):
