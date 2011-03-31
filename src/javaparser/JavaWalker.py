@@ -108,8 +108,8 @@ class JavaWalker(object):
 
     def node(self, token, node, *args, **kwargs):
         n = node(*args, **kwargs)
-        n.lineno = token.getLine(),
-        n.charpos = token.getCharPositionInLine(),
+        n.lineno = token.getLine()
+        n.charpos = token.getCharPositionInLine()
         return n
 
     def unknown_token(self, token):
@@ -1046,6 +1046,10 @@ class JavaWalker(object):
                 if modifiers is None:
                     modifiers = []
                 modifiers.append(text)
+            elif type_ == tok.Annotation:
+                if modifiers is None:
+                    modifiers = []
+                modifiers.append(self.dispatch(c))
             else:
                 self.unknown_token(c)
         return self.node(
@@ -1408,6 +1412,14 @@ class JavaWalker(object):
         return self.node(
             token, ast.VariableDeclarator, name, array, initializer,
         )
+
+    def walk_VoidClass(self, token, children):
+        array = []
+        name = children[0].text
+        for c in children[1:]:
+            array.append('[]')
+        node = self.node(token, ast.PrimitiveType, name)
+        return self.node(token, ast.ClassSuffix, node, array)
 
     def walk_while(self, token, children):
         test = None
