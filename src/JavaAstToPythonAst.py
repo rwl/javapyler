@@ -165,7 +165,7 @@ class JavaAstToPythonAst(object):
         self.label_stack = []
         self.comments = []
         self.javadocs = []
-        self.javalib = []
+        self.javalib = {}
         self.block_self_scope = False
         for i in range(tokens.size()):
             t = tokens.get(i)
@@ -204,11 +204,15 @@ class JavaAstToPythonAst(object):
             nodes.append(self.dispatch(t))
 
         if self.javalib:
-            self.javalib.sort()
+            names = []
+            for k, v in self.javalib.iteritems():
+                if v > 0:
+                    names.append(k)
+            names.sort()
             javalib = getattr(self.opts, 'javalib')
             if javalib is None:
                 javalib = 'javapyler.java'
-            stmt.nodes.append(ast.From(javalib, self.javalib, 0, None))
+            stmt.nodes.append(ast.From(javalib, names, 0, None))
 
         self.createImports(stmt, cu)
         stmt.nodes += nodes
@@ -239,7 +243,13 @@ class JavaAstToPythonAst(object):
 
     def addJavaLib(self, name):
         if not name in self.javalib:
-            self.javalib.append(name)
+            self.javalib[name] = 1
+        else:
+            self.javalib[name] += 1
+
+    def delJavaLib(self, name):
+        self.javalib[name] -= 1
+        assert self.javalib[name] >= 0
 
     def addGlobal(self, name, pnode, jtype):
         if not name in self.globals:
@@ -567,13 +577,11 @@ class JavaAstToPythonAst(object):
                     fname = 'PREDEC'
                     self.addJavaLib(fname)
                     return self.libCallGlobalsAndLocals(fname, args)
-                    return ast.AugAssign(left_expr, '-=', ast.Const(1))
                 if op == '++':
                     args = [left_expr]
                     fname = 'PREINC'
                     self.addJavaLib(fname)
                     return self.libCallGlobalsAndLocals(fname, args)
-                    return ast.AugAssign(left_expr, '+=', ast.Const(1))
             if left is not None and right is not None:
                 if op == '+':
                     return ast.Add((left_expr, right_expr))
@@ -632,6 +640,24 @@ class JavaAstToPythonAst(object):
         raise AstError(e, "getOperatorExpr '%s'" % op)
     
     def flatten_stmt(self, node, add_pass=False):
+        def backmap(node):
+            if isinstance(node, ast.CallFunc):
+                if isinstance(node.node, ast.Name):
+                    name = node.node.name
+                    if name in ['POSTINC', 'POSTDEC', 'PREINC', 'PREDEC']:
+                        if name[-3:] == 'INC':
+                            op = '+='
+                        else:
+                            op = '-='
+                        if isinstance(node.args[2], ast.Const):
+                            varname = node.args[2].value
+                            left_expr = ast.Name(varname)
+                        else:
+                            left_expr = node.args[2]
+                        node = ast.AugAssign(left_expr, op, ast.Const(1))
+                        self.delJavaLib(name)
+            return node
+
         def flatten(node):
             nodes = []
             comment_node = node
@@ -651,22 +677,8 @@ class JavaAstToPythonAst(object):
                         nn = ast.EmptyNode()
                         nn.comments = n.comments
                         nodes.append(nn)
-                elif isinstance(n, ast.CallFunc):
-                    if isinstance(n.node, ast.Name):
-                        name = n.node.name
-                        if name in ['POSTINC', 'POSTDEC', 'PREINC', 'PREDEC']:
-                            if name[-3:] == 'INC':
-                                op = '+='
-                            else:
-                                op = '-='
-                            if isinstance(n.args[2], ast.Const):
-                                varname = n.args[2].value
-                                left_expr = ast.Name(varname)
-                            else:
-                                left_expr = n.args[2]
-                            n = ast.AugAssign(left_expr, op, ast.Const(1))
-                    nodes.append(n)
                 else:
+                    n = backmap(n)
                     nodes.append(n)
             node.nodes[:] = nodes
             return node
