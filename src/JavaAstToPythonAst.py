@@ -1993,6 +1993,10 @@ class JavaAstToPythonAst(object):
                 )
             nodes.append(a)
             self.addLocal(a.nodes[0].name, a.nodes[0], e.type)
+        if e.comments:
+            empty = ast.EmptyNode()
+            empty.comments = [self.parseComment(c) for c in e.comments]
+            nodes.append(empty)
         return self.stmt(nodes)
 
     def visitFor(self, e):
@@ -2213,6 +2217,10 @@ class JavaAstToPythonAst(object):
                     )
                 nodes.append(a)
                 self.addLocal(name, a.nodes[0], e.type)
+        if e.comments:
+            empty = ast.EmptyNode()
+            empty.comments = [self.parseComment(c) for c in e.comments]
+            nodes.append(empty)
         return self.stmt(nodes)
 
     def visitMethod(self, e):
@@ -2486,6 +2494,8 @@ class JavaAstToPythonAst(object):
                     init,
             )
             self.addLocal(name, a.nodes[0], None)
+        if e.comments:
+            a.comments = [self.parseComment(c) for c in e.comments]
         return a
 
     def visitWhile(self, e):
