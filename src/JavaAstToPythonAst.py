@@ -208,11 +208,12 @@ class JavaAstToPythonAst(object):
             for k, v in self.javalib.iteritems():
                 if v > 0:
                     names.append(k)
-            names.sort()
-            javalib = getattr(self.opts, 'javalib')
-            if javalib is None:
-                javalib = 'javapyler.java'
-            stmt.nodes.append(ast.From(javalib, names, 0, None))
+            if names:
+                names.sort()
+                javalib = getattr(self.opts, 'javalib')
+                if javalib is None:
+                    javalib = 'javapyler.java'
+                stmt.nodes.append(ast.From(javalib, names, 0, None))
 
         self.createImports(stmt, cu)
         stmt.nodes += nodes
@@ -242,14 +243,16 @@ class JavaAstToPythonAst(object):
         self.state_stack = self.state_stack[:depth]
 
     def addJavaLib(self, name):
-        if not name in self.javalib:
-            self.javalib[name] = 1
-        else:
-            self.javalib[name] += 1
+        if not self.analysing:
+            if not name in self.javalib:
+                self.javalib[name] = 1
+            else:
+                self.javalib[name] += 1
 
     def delJavaLib(self, name):
-        self.javalib[name] -= 1
-        assert self.javalib[name] >= 0
+        if not self.analysing:
+            self.javalib[name] -= 1
+            assert self.javalib[name] >= 0
 
     def addGlobal(self, name, pnode, jtype):
         if not name in self.globals:
@@ -645,17 +648,25 @@ class JavaAstToPythonAst(object):
                 if isinstance(node.node, ast.Name):
                     name = node.node.name
                     if name in ['POSTINC', 'POSTDEC', 'PREINC', 'PREDEC']:
-                        if name[-3:] == 'INC':
-                            op = '+='
-                        else:
-                            op = '-='
-                        if isinstance(node.args[2], ast.Const):
-                            varname = node.args[2].value
-                            left_expr = ast.Name(varname)
-                        else:
-                            left_expr = node.args[2]
-                        node = ast.AugAssign(left_expr, op, ast.Const(1))
-                        self.delJavaLib(name)
+                        if len(node.orig_args) == 1:
+                            if name[-3:] == 'INC':
+                                op = '+='
+                            else:
+                                op = '-='
+                            left_expr = node.orig_args[0]
+                            node = ast.AugAssign(left_expr, op, ast.Const(1))
+                            self.delJavaLib(name)
+                            node.backmap = name
+            elif isinstance(node, ast.Return):
+                value = backmap(node.value)
+                if value is not node.value:
+                    nodes = []
+                    if value.backmap.startswith('POST'):
+                        retvar, init = self.getTmpVar(value.node)
+                        nodes.append(init)
+                        nodes.append(value)
+                        nodes.append(ast.Return(ast.Name(retvar)))
+                    node = ast.Stmt(nodes)
             return node
 
         def flatten(node):
@@ -679,7 +690,11 @@ class JavaAstToPythonAst(object):
                         nodes.append(nn)
                 else:
                     n = backmap(n)
-                    nodes.append(n)
+                    if isinstance(n, ast.Stmt):
+                        n = flatten(n)
+                        nodes += n.nodes
+                    else:
+                        nodes.append(n)
             node.nodes[:] = nodes
             return node
         node = flatten(node)
@@ -816,11 +831,33 @@ class JavaAstToPythonAst(object):
         return py_node
 
     def libCallGlobalsAndLocals(self, name, arguments):
-        args = [
-            ast.CallFunc(ast.Name('globals'), []),
-            ast.CallFunc(ast.Name('locals'), []),
-        ] + arguments
-        return ast.CallFunc(ast.Name(name), args)
+        # The globals/locals are only added when the argument
+        # is convertable to a string (constant)
+        # This will make sure that you'll get an error on
+        # invocations of ((POST)|(PRE))|((INC)|(DEC)) when
+        # the argument is not a single string
+        args = arguments[:]
+        if len(args) == 1:
+            a = args[0]
+            if isinstance(a, ast.Name):
+                args = [ast.Const(a.name)]
+            elif isinstance(a, ast.Getattr):
+                names = []
+                while isinstance(a, ast.Getattr):
+                    names.append(a.attrname)
+                    a = a.expr
+                if isinstance(a, ast.Name):
+                    names.append(a.name)
+                    names.reverse()
+                    args = [ast.Const('.'.join(names))]
+            if isinstance(args[0], ast.Const):
+                args = [
+                    ast.CallFunc(ast.Name('globals'), []),
+                    ast.CallFunc(ast.Name('locals'), []),
+                ] + args
+        node = ast.CallFunc(ast.Name(name), args)
+        node.orig_args = arguments
+        return node
 
     def methodMultiDeclElse(self, minargs, maxargs):
         self.addJavaLib('ARGERROR')
