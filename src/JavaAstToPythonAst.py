@@ -1056,6 +1056,7 @@ class JavaAstToPythonAst(object):
 
         method = self.getMethod(name)
         method['props'] = props
+        method['locals'] = self.locals[-1]
         return method
 
     def getNormalPyMethod(self, name, method, base, props):
@@ -1481,6 +1482,7 @@ class JavaAstToPythonAst(object):
             code,
         )
         method['node'] = node
+        node.locals = method['locals']
         self.addLocal(name, node, None)
         return node
 
