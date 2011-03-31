@@ -1,7 +1,6 @@
 
-This a not even alpha release.
-
-Lots of untested stuff
+This project is in alpha state and needs lots of testing.
+The majority of gwt code can be parsed and converted to python code.
 
 
 Install
@@ -43,5 +42,7 @@ Then:
 bin/gwtpyler --config gwtpyler.cfg
 
 
-The contents of src/java.py should go to the __pyjamas__.py 
-(for desktop) and to the translator __pyjamas__ for pyjs.
+The contents of src/java/__init__.py should go to the __pyjamas__.py (for d
+esktop) and to the translator __pyjamas__ for pyjs. In the latter case some 
+additional fixes are needed for POST/PRE INC/DEC. However, most ++/-- are 
+converted to straight AugAssign asts (eg. foo += 1).
