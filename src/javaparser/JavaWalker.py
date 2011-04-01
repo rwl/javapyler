@@ -80,10 +80,12 @@ class JavaWalker(object):
         for c, type_, text in children.iteritems():
             if type_ == tok.PACKAGE:
                 package = self.dispatch(c)
-            elif type_ == tok.ClassDeclaration:
-                types.append(self.dispatch(c))
             elif type_ == tok.IMPORT:
                 imports.append(self.dispatch(c))
+            elif type_ == tok.ClassDeclaration:
+                types.append(self.dispatch(c))
+            elif type_ == tok.EnumDeclaration:
+                types.append(self.dispatch(c))
             elif type_ == tok.InterfaceDeclaration:
                 types.append(self.dispatch(c))
             elif type_ == tok.Annotations:

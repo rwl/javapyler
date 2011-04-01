@@ -141,6 +141,8 @@ class PyGen(object):
             or isinstance(node, ast.CallFunc)
             or isinstance(node, ast.Getattr)
             or isinstance(node, ast.Subscript)
+            or isinstance(node, ast.List)
+            or isinstance(node, ast.Tuple)
         ):
             return code
         if ast is not None:

@@ -461,7 +461,9 @@ class JavaAstToPythonAst(object):
                 return
             file_globals_guess[fpath] = {}
             if os.path.isfile(fpath):
-                data = open(fpath, 'r').read()
+                fp = open(fpath, 'r')
+                data = fp.read()
+                fp.close()
                 for regex in [re_class, re_enum, re_interface]:
                     for r in regex.findall(data):
                         file_globals_guess[fpath][r] = None
@@ -776,7 +778,11 @@ class JavaAstToPythonAst(object):
     def dispatch_list(self, src):
         dst = []
         for v in src:
-            v = self.dispatch(v)
+            if isinstance(v, list):
+                # Probably nested array creator
+                v = self.dispatch_list(v)
+            else:
+                v = self.dispatch(v)
             if isinstance(v, Type):
                 continue
             #if isinstance(v, basestring):
@@ -1614,12 +1620,23 @@ class JavaAstToPythonAst(object):
         )
 
     def visitArrayCreator(self, e):
+        def listCreator(nodes):
+            _nodes = []
+            for node in nodes:
+                if isinstance(node, list):
+                    node = listCreator(node)
+                _nodes.append(node)
+            return ast.List(_nodes)
+
         if e.initializer is not None:
             if isinstance(e.initializer, list):
-                nodes = self.dispatch_list(e.initializer)
+                node = listCreator(self.dispatch_list(e.initializer))
             else:
-                nodes = [self.dispatch(e.initializer)]
-            return ast.List(nodes)
+                right = self.dispatch(e.initializer)
+                node = ast.Mul((ast.List([ast.Name(None)]), right))
+            if e.comments:
+                node.comments = [self.parseComment(c) for c in e.comments]
+            return node
         return ast.EmptyNode()
         raise NotImplemented
 
@@ -1949,10 +1966,18 @@ class JavaAstToPythonAst(object):
                 right,
             )
         else:
-            print e.arguments
             args = self.dispatch_list(e.arguments)
-            print args
-            raise NotImplemented
+            node = ast.Assign(
+                [ast.AssName(name, 'OP_ASSIGN')],
+                ast.List(args),
+            )
+            node.comments = ['FIXME: Use this as constructor call args']
+        if e.comments:
+            comments = [self.parseComment(c) for c in e.comments]
+            if node.comments:
+                node.comments += comments
+            else:
+                node.comments = comments
         return node
 
     def visitEqualityExpr(self, e):
@@ -2021,7 +2046,10 @@ class JavaAstToPythonAst(object):
         if body is None:
             body = ast.Stmt([ast.Pass()])
         else:
-            body = self.stmt(e.nodes, True)
+            body = e.nodes
+            if not isinstance(body, list):
+                body = [body]
+            body = self.stmt(body, True)
         # Attach comments from block top to an empty node
         empty = ast.EmptyNode()
         if e.comments:
