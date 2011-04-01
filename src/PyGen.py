@@ -313,7 +313,8 @@ class PyGen(object):
         )
         self.indent += 1
         if node.comments:
-            self.pushComment(node.comments[0])
+            comment = node.comments.pop(0)
+            self.pushComment(comment)
         self.addCode(self.dispatch(node.body))
         self.addComment(node.body)
         self.indent -= 1
@@ -321,12 +322,14 @@ class PyGen(object):
             self.addCode("else:")
             self.indent += 1
             if node.comments:
-                self.pushComment(node.comments[1])
+                comment = node.comments.pop(0)
+                self.pushComment(comment)
             self.addCode(self.dispatch(node.else_))
             self.addComment(node.else_)
             self.indent -= 1
-        if node.comments:
-            self.pushComment(node.comments[2])
+        while node.comments:
+            comment = node.comments.pop(0)
+            self.pushComment(comment)
 
     def astFrom(self, node):
         self.addCode(

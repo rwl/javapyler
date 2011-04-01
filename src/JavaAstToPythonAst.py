@@ -671,6 +671,26 @@ class JavaAstToPythonAst(object):
                     node = ast.Stmt(nodes)
             return node
 
+        def addEmpty(nodes, node):
+            if node.comments:
+                if (
+                    len(nodes) > 0 
+                    and (
+                        isinstance(nodes[-1], ast.EmptyNode)
+                        or isinstance(nodes[-1], ast.Pass)
+                    )
+                ):
+                    empty = nodes[-1]
+                    if not empty.comments:
+                        empty.comments = node.comments
+                    else:
+                        empty.comments += node.comments
+                else:
+                    empty = ast.EmptyNode()
+                    empty.comments = node.comments
+                    nodes.append(empty)
+                node.comments = None
+
         def flatten(node):
             nodes = []
             comment_node = node
@@ -679,21 +699,17 @@ class JavaAstToPythonAst(object):
                     raise TypeError(n)
                 if isinstance(n, ast.Stmt):
                     n = flatten(n)
-                    #if n.comments:
-                    #    comment_node.comments += n.comments
                     nodes += n.nodes
+                    addEmpty(nodes, n)
                 elif isinstance(n, ast.EmptyNode):
-                    if n.comments:
-                        nodes.append(n)
+                    addEmpty(nodes, n)
                 elif isinstance(n, ast.Pass):
-                    if n.comments:
-                        nn = ast.EmptyNode()
-                        nn.comments = n.comments
-                        nodes.append(nn)
+                    addEmpty(nodes, n)
                 else:
                     n = backmap(n)
                     if isinstance(n, ast.Stmt):
                         n = flatten(n)
+                        addEmpty(nodes, n)
                         nodes += n.nodes
                     else:
                         nodes.append(n)
@@ -758,7 +774,7 @@ class JavaAstToPythonAst(object):
                 if self.anon_count >= 1000:
                     raise AstError(v, "AnonymousClass")
                 self.anon_count += 1
-                return node
+                return self.node(v, node)
             if isinstance(node, Type):
                 self.type_count = getattr(self, 'type_count', 0)
                 if self.type_count >= 10000:
@@ -823,10 +839,10 @@ class JavaAstToPythonAst(object):
     def node(self, java_node, py_node):
         if java_node.comments:
             # Track the nodes done, in case we vitit this multiple times
-            if not hasattr(py_node, 'comment_nodes'):
-                py_node.comment_nodes = []
-            if java_node not in py_node.comment_nodes:
-                py_node.comment_nodes.append(java_node)
+            if not hasattr(py_node, 'comments_done'):
+                py_node.comments_done = []
+            if java_node not in py_node.comments_done:
+                py_node.comments_done.append(java_node)
                 comments = java_node.comments
                 comments = [self.parseComment(c) for c in comments]
                 if py_node.comments is None:
@@ -1634,11 +1650,8 @@ class JavaAstToPythonAst(object):
             else:
                 right = self.dispatch(e.initializer)
                 node = ast.Mul((ast.List([ast.Name(None)]), right))
-            if e.comments:
-                node.comments = [self.parseComment(c) for c in e.comments]
             return node
         return ast.EmptyNode()
-        raise NotImplemented
 
     def visitAssert(self, e):
         test = self.dispatch(e.test)
@@ -1894,7 +1907,7 @@ class JavaAstToPythonAst(object):
         )
         body.nodes.insert(0, init)
         node = ast.While(test, body, None)
-        node.comment_nodes = [e]
+        node.comments_done = [e]
         if e.comments:
             node.comments = [
                 [self.parseComment(c) for c in e.comments[0]],
@@ -1903,7 +1916,9 @@ class JavaAstToPythonAst(object):
             ]
         nodes = [node]
         self.checkLabel(nodes)
-        return self.stmt(nodes)
+        node = self.stmt(nodes)
+        node.comments_done = [e]
+        return node
 
     def visitEmptyNode(self, e):
         return ast.EmptyNode()
@@ -1972,12 +1987,6 @@ class JavaAstToPythonAst(object):
                 ast.List(args),
             )
             node.comments = ['FIXME: Use this as constructor call args']
-        if e.comments:
-            comments = [self.parseComment(c) for c in e.comments]
-            if node.comments:
-                node.comments += comments
-            else:
-                node.comments = comments
         return node
 
     def visitEqualityExpr(self, e):
@@ -2018,10 +2027,6 @@ class JavaAstToPythonAst(object):
                 )
             nodes.append(a)
             self.addLocal(a.nodes[0].name, a.nodes[0], e.type)
-        if e.comments:
-            empty = ast.EmptyNode()
-            empty.comments = [self.parseComment(c) for c in e.comments]
-            nodes.append(empty)
         return self.stmt(nodes)
 
     def visitFor(self, e):
@@ -2056,7 +2061,7 @@ class JavaAstToPythonAst(object):
             empty.comments = [self.parseComment(c) for c in e.comments[0]]
         else:
             e.comments = None
-        empty.comment_nodes = [e]
+        empty.comments_done = [e]
         # And insert that at the top of the body
         body.nodes.insert(0, empty)
         node = ast.While(
@@ -2091,10 +2096,11 @@ class JavaAstToPythonAst(object):
             empty.comments = [self.parseComment(c) for c in e.comments[1]]
         else:
             e.comments = None
-        empty.comment_nodes = [e]
+        empty.comments_done = [e]
         # And append that to the statements
         stmt.nodes.append(empty)
         self.checkLabel(stmt.nodes)
+        stmt.comments_done = [e]
         return stmt
 
     def visitForEach(self, e):
@@ -2123,7 +2129,9 @@ class JavaAstToPythonAst(object):
             node.comments = None
         nodes = [node]
         self.checkLabel(nodes)
-        return self.stmt(nodes)
+        node = self.stmt(nodes)
+        node.comments_done = [e]
+        return node
 
     def visitIdentifier(self, e):
         if e.name == 'this':
@@ -2153,7 +2161,7 @@ class JavaAstToPythonAst(object):
         # (test, then)+ else rest
         ntests = len(node.tests)
         node.comments = []
-        node.comment_nodes = [e]
+        node.comments_done = [e]
         comments = e.comments[:]
         while ntests > 0:
             ntests -= 1
@@ -2245,10 +2253,6 @@ class JavaAstToPythonAst(object):
                     )
                 nodes.append(a)
                 self.addLocal(name, a.nodes[0], e.type)
-        if e.comments:
-            empty = ast.EmptyNode()
-            empty.comments = [self.parseComment(c) for c in e.comments]
-            nodes.append(empty)
         return self.stmt(nodes)
 
     def visitMethod(self, e):
@@ -2508,8 +2512,8 @@ class JavaAstToPythonAst(object):
         init = e.initializer
         name = e.name
         if init is None:
-            a = ast.Pass()
-            self.addLocal(name, a)
+            node = ast.Pass()
+            self.addLocal(name, node)
         else:
             init = self.dispatch(init)
             assert init is not None
@@ -2517,14 +2521,12 @@ class JavaAstToPythonAst(object):
                 cls, name = self.anonClass(init, ast.Name(name))
                 self.addLocal(name, cls)
                 return cls
-            a = ast.Assign(
+            node = ast.Assign(
                     [ast.AssName(name, 'OP_ASSIGN')],
                     init,
             )
-            self.addLocal(name, a.nodes[0], None)
-        if e.comments:
-            a.comments = [self.parseComment(c) for c in e.comments]
-        return a
+            self.addLocal(name, node.nodes[0], None)
+        return node
 
     def visitWhile(self, e):
         test = self.dispatch(e.test)
@@ -2532,7 +2534,7 @@ class JavaAstToPythonAst(object):
             raise AstError(s, "No condition")
         body = self.stmt(e.nodes)
         node = ast.While(test,body,None)
-        node.comment_nodes = [e]
+        node.comments_done = [e]
         if e.comments:
             node.comments = [
                 [self.parseComment(c) for c in e.comments[0]],
@@ -2541,7 +2543,9 @@ class JavaAstToPythonAst(object):
             ]
         nodes = [node]
         self.checkLabel(nodes)
-        return self.stmt(nodes)
+        node = self.stmt(nodes)
+        node.comments_done = [e]
+        return node
 
     def visitUnaryExpr(self, e):
         expr = self.getOperatorExpr(e, e.op, e.node, None)

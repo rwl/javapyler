@@ -41,7 +41,9 @@ class Node:
         return ""
 
 class EmptyNode(Node):
-    pass
+
+    def __repr__(self):
+        return "EmptyNode()" + self.commentstr()
 
 class Expression(Node):
     # Expression is an artificial node class to support "eval"
