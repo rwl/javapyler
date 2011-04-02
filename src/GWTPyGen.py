@@ -21,6 +21,12 @@ class GWTPyGen(PyGen):
                     patt = '\\b%s\\b' % v
                     repl = '@{{%s}}' % v
                     scomment = re.sub(patt, repl, scomment)
+            patt = '\\bthis[[]'
+            repl = '@{{self}}.'
+            scomment = re.sub(patt, repl, scomment)
+            patt = '\\bthis[.]'
+            repl = '@{{self}}.'
+            scomment = re.sub(patt, repl, scomment)
             self.addCode('JS("""%s""")' % scomment)
         else:
             super(GWTPyGen, self).addCommentCode(comment)
