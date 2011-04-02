@@ -1943,13 +1943,18 @@ class JavaAstToPythonAst(object):
             stmt,
             e.lineno
         )
+        values = []
         for n in e.constants:
             node = self.dispatch(n)
+            values.append(ast.Name(node.nodes[0].name))
             stmt.nodes.append(node)
+        hasConstructor = False
         for n in e.members:
             try:
                 depth = self.getStackDepth()
                 node = self.dispatch(n)
+                if isinstance(n, jast.Method) and n.name == '__init__':
+                    hasConstructor = True
                 if isinstance(node, list):
                     stmt.nodes += node
                 elif isinstance(node, ast.Pass):
@@ -1959,8 +1964,35 @@ class JavaAstToPythonAst(object):
                     stmt.nodes.append(node)
             except IgnoreMethod:
                 self.setStackDepth(depth)
+        stmt.nodes.append(ast.Assign(
+            [ast.AssName('_values', 'OP_ASSIGN')],
+            ast.List(values),
+        ))
+        stmt.nodes.append(ast.Function(
+            ast.Decorators([ast.Name('classmethod')]),
+            'values', ['cls'], [], 0, None,
+            ast.Stmt([ast.Return(ast.Slice(
+                ast.Getattr(ast.Name('cls'), '_values'),
+                'OP_APPLY', None, None,
+            ))],
+        )))
+
         self.flatten_stmt(stmt, True)
         self.popClassName()
+        if hasConstructor:
+            nodes = [class_node]
+            nodes.append(ast.Assign(
+                [ast.AssAttr(ast.Name(e.name), '_values', 'OP_ASSIGN')],
+                ast.ListComp(
+                    ast.CallFunc(ast.Name(e.name), [], ast.Name('v'), None),
+                    [ast.ListCompFor(
+                        ast.AssName('v', 'OP_ASSIGN'),
+                        ast.Getattr(ast.Name(e.name), '_values'),
+                        [],
+                    )],
+                ),
+            ))
+            class_node = ast.Stmt(nodes)
         return class_node
 
     def visitEnumConstant(self, e):
@@ -1986,7 +2018,6 @@ class JavaAstToPythonAst(object):
                 [ast.AssName(name, 'OP_ASSIGN')],
                 ast.List(args),
             )
-            node.comments = ['FIXME: Use this as constructor call args']
         return node
 
     def visitEqualityExpr(self, e):

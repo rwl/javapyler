@@ -244,11 +244,16 @@ class PyGen(object):
                 self.addCode(code, False)
                 if idx != len(node.args):
                     self.addCode(", ", False)
+        if node.args:
+            comma = ', '
+        else:
+            comma = ''
         if node.star_args:
-            self.addCode(", *", False)
+            self.addCode("%s*" % comma, False)
             self.addCode(self.dispatch(node.star_args), False)
+            comma = ', '
         if node.dstar_args:
-            self.addCode(", **", False)
+            self.addCode("%s**" % comma, False)
             self.addCode(self.dispatch(node.dstar_args), False)
         self.addCode(")", False)
         state = self.popState()
@@ -341,7 +346,12 @@ class PyGen(object):
         self.addComment(node)
 
     def astFunction(self, node):
-        args = [self.dispatch(a) for a in node.argnames]
+        args = []
+        for a in node.argnames:
+            if isinstance(a, basestring):
+                args.append(a)
+            else:
+                args.append(self.dispatch(a))
         idx = len(args)
         if node.defaults:
             defaults = [self.dispatch(d) for d in node.defaults]
@@ -442,6 +452,19 @@ class PyGen(object):
     def astList(self, node):
         return "[%s]" % ', '.join([str(self.dispatch(i)) for i in node.nodes])
 
+    def astListComp(self, node):
+        expr = self.dispatch(node.expr)
+        quals = " ".join([self.dispatch(q) for q in node.quals])
+        return "[%s %s]" % (expr, quals)
+
+    def astListCompFor(self, node):
+        assert isinstance(node.assign, ast.AssName)
+        assert node.assign.flags == 'OP_ASSIGN'
+        assign = node.assign.name
+        lst = self.dispatch(node.list)
+        assert not node.ifs
+        return 'for %s in %s' % (assign, lst)
+
     def astMod(self, node):
         left = self.par_expr(node.left, self.dispatch(node.left))
         right = self.par_expr(node.right, self.dispatch(node.right))
@@ -494,6 +517,17 @@ class PyGen(object):
         left = self.par_expr(node.left, self.dispatch(node.left))
         right = self.par_expr(node.right, self.dispatch(node.right))
         return '%s >> %s' % (left, right)
+
+    def astSlice(self, node):
+        expr = self.dispatch(node.expr)
+        assert node.flags == 'OP_APPLY'
+        lower = self.dispatch(node.lower)
+        upper = self.dispatch(node.upper)
+        if lower is None:
+            lower = ""
+        if upper is None:
+            upper = ""
+        return "%s[%s:%s]" % (expr, lower, upper)
 
     def astStmt(self, node):
         self.addComment(node)

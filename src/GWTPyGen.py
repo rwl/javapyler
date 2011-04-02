@@ -16,10 +16,11 @@ class GWTPyGen(PyGen):
         scomment = comment.strip()
         if scomment.startswith('-{') and scomment.endswith('}-'):
             scomment = scomment[2:-2]
-            for v in self.locals.keys():
-                patt = '\\b%s\\b' % v
-                repl = '@{{%s}}' % v
-                scomment = re.sub(patt, repl, scomment)
+            if self.locals is not None:
+                for v in self.locals.keys():
+                    patt = '\\b%s\\b' % v
+                    repl = '@{{%s}}' % v
+                    scomment = re.sub(patt, repl, scomment)
             self.addCode('JS("""%s""")' % scomment)
         else:
             super(GWTPyGen, self).addCommentCode(comment)
