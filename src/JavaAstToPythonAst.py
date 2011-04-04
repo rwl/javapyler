@@ -99,6 +99,7 @@ class JavaAstToPythonAst(object):
         'ArrayList': 'list',
         'Double': 'float',
         'HashMap': 'dict',
+        'HashTable': 'dict',
         'int': 'int',
         'Int': 'int',
         'Integer': 'int',
@@ -127,6 +128,7 @@ class JavaAstToPythonAst(object):
         'length': ('len', False, '__len__'),
         'size': ('len', False, '__len__'),
         'startsWith': ('startswith', True, 'startswith'),
+        'substring': ('[]', False, '__getslice__'),
         'toArray': ('list', False, None),
         'toString': ('str', False, '__str__'),
     }
@@ -1592,6 +1594,9 @@ class JavaAstToPythonAst(object):
                         if len(e.arguments) == 1:
                             node_ast = ast.Subscript
                             node = node.expr
+                        elif len(e.arguments) == 2:
+                            node_ast = ast.Slice
+                            node = node.expr
                     elif name == '==':
                         assert len(e.arguments) == 1
                         node_ast = ast.Compare
@@ -1625,6 +1630,8 @@ class JavaAstToPythonAst(object):
             args.append(a)
         if node_ast is ast.Subscript:
             node = node_ast(node, 'OP_APPLY', args)
+        elif node_ast is ast.Slice:
+            node = node_ast(node, 'OP_APPLY', args[0], args[1])
         elif node_ast is ast.Compare:
             op = '=='
             if (
