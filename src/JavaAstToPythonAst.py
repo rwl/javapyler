@@ -166,6 +166,7 @@ class JavaAstToPythonAst(object):
         self.comments = []
         self.javadocs = []
         self.javalib = {}
+        self.unresolvable_imports = {}
         self.block_self_scope = False
         for i in range(tokens.size()):
             t = tokens.get(i)
@@ -443,6 +444,17 @@ class JavaAstToPythonAst(object):
         node.doc = self.parseComment(comment)
 
     def collectGlobals(self, cu):
+        def unresolvable(impname):
+            name = impname.split('.')[-1]
+            if not impname in file_globals_guess:
+                file_globals_guess[impname] = {}
+            file_globals_guess[impname][name] = None
+            self.addGlobal(name, impname, None)
+            if not impname in self.unresolvable_imports:
+                self.unresolvable_imports[impname] = []
+            if not name in self.unresolvable_imports[impname]:
+                self.unresolvable_imports[impname].append(name)
+
         def handleFile(fpath, impname=None):
             if fpath == self.absSrcFile:
                 return
@@ -469,9 +481,7 @@ class JavaAstToPythonAst(object):
                         file_globals_guess[fpath][r] = None
                         self.addGlobal(r, fpath, None)
             elif impname is not None:
-                name = impname.split('.')[-1]
-                file_globals_guess[impname][name] = None
-                self.addGlobal(name, impname, None)
+                unresolvable(impname)
 
         src = self.absSrcFile.split(os.path.sep)
         dirname = os.path.dirname(self.absSrcFile)
@@ -486,18 +496,19 @@ class JavaAstToPythonAst(object):
         if cu.imports:
             imports = [i for i in cu.imports]
         for imp in imports:
-            name = imp.name
+            impname = imp.name
             wildcard = imp.wildcard
-            imp = name.split('.')
+            imp = impname.split('.')
             while not imp[0] in src:
                 imp.pop(0)
                 if not imp:
                     break
             if not imp:
+                unresolvable(impname)
                 continue
             fpath = src[:src.index(imp[0])] + imp
             fpath = "%s.java" % os.path.sep.join(fpath)
-            handleFile(fpath)
+            handleFile(fpath, impname)
         return
 
     def mapImport(self, name):
@@ -549,6 +560,21 @@ class JavaAstToPythonAst(object):
                 for imp in cu.imports:
                     if name.endswith(imp.name):
                         self.addImport(node, imp.name, names)
+
+        comments = []
+        importnames = self.unresolvable_imports.keys()
+        importnames.sort()
+        for name in importnames:
+            names = self.unresolvable_imports[name]
+            names.sort()
+            comments.append("from %s import (%s,)" % (
+                name,
+                ', '.join([repr(n) for n in names]),
+            ))
+        if comments:
+            empty = ast.EmptyNode()
+            empty.comments = comments
+            node.nodes.append(empty)
 
     def mapInitizer(self, init):
         s = str(init)
