@@ -401,11 +401,7 @@ class PyGen(object):
             self.addCode(self.dispatch(condition))
             self.indent -= 1
             self.addCode("):")
-            if node.comments:
-                comment = node.comments.pop(0)
-                self.pushComment(comment[0])
-                self.pushComment(comment[1])
-            elif idx == len(self.code) - 3:
+            if idx == len(self.code) - 3:
                 # Just one line
                 line = "%s %s:" % (
                     ifstr,
@@ -416,6 +412,10 @@ class PyGen(object):
                     self.code.pop()
                     self.code.pop()
                     self.addCode(line.lstrip())
+            if node.comments:
+                comment = node.comments.pop(0)
+                self.pushComment(comment[0])
+                self.pushComment(comment[1])
             self.indent += 1
             self.addComment(condition)
             self.addCode(self.dispatch(code))
