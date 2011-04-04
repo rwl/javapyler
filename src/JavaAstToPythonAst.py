@@ -521,6 +521,8 @@ class JavaAstToPythonAst(object):
                 name = name[len(base):]
                 if name[0] == '.':
                     name = name[1:]
+                if self.opts.py_base:
+                    name = "%s.%s" % (self.opts.py_base, name)
         return name
 
     def addImport(self, node, name, names):
