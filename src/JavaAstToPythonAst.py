@@ -533,6 +533,7 @@ class JavaAstToPythonAst(object):
 
     def createImports(self, node, cu):
         unresolved = self.globals_ref.keys()
+        unresolved.sort()
         files = {}
         for u in unresolved:
             fpath = self.globals[u][0]

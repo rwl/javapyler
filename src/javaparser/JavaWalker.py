@@ -1099,7 +1099,7 @@ class JavaWalker(object):
         return self.left_op_right(token, children, ast.MultiplicativeExpr)
 
     def walk_package(self, token, children):
-        name = "".join([c.getText() for c in children])
+        name = "".join([self.dispatch(c) for c in children])
         return self.node(token, ast.Package, name)
 
     def walk_ParameterDecl(self, token, children):
