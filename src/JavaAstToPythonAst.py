@@ -106,6 +106,7 @@ class JavaAstToPythonAst(object):
         'List': 'list',
         'Map': 'dict',
         'String': 'str',
+        'StringBuffer:': 'str',
     }
     # toArray -> list()
     # toString -> str()
@@ -138,7 +139,7 @@ class JavaAstToPythonAst(object):
         'System',
     ]
 
-    def __init__(self, srcFile, options=None,**kwargs):
+    def __init__(self, srcFile, options=None, **kwargs):
         if options is None:
             self.opts = object()
         else:
@@ -275,7 +276,10 @@ class JavaAstToPythonAst(object):
 
     def hasGlobal(self, name):
         if name in self.globals:
-            self.globals_ref[name] = 1
+            if self.opts.as_module and self.getClassDepth() == 2:
+                pass
+            else:
+                self.globals_ref[name] = 1
             return True
         return False
 
@@ -527,7 +531,11 @@ class JavaAstToPythonAst(object):
                     name = "%s.%s" % (self.opts.py_base, name)
         return name
 
-    def addImport(self, node, name, names):
+    def addImport(self, node, name, names, as_module):
+        if as_module:
+            names = name.split('.')
+            name = '.'.join(names[:-1])
+            names = [names[-1]]
         name = self.mapImport(name)
         node.nodes.append(ast.From(name, names, 0, None))
 
@@ -555,19 +563,25 @@ class JavaAstToPythonAst(object):
         else:
             pkg = self.package_name.split('.')
         for fpath in files:
+            as_module = False
+            for section in self.opts.config.sections():
+                if fpath.find(section) >= 0:
+                    as_module = self.opts.config.get(section, 'as_module').lower()
+                    as_module = as_module == 'true' or as_module == '1' 
+                    break
             names = files[fpath].keys()
             names.sort()
             name = fpath.split(os.path.sep)
             if name[-len(pkg)-1:-1] == pkg:
                 name = '.'.join(name[-len(pkg)-1:])
                 name = name[:-5]
-                self.addImport(node, name, names)
+                self.addImport(node, name, names, as_module)
             else:
                 name = '.'.join(name)
                 name = name[:-5]
                 for imp in cu.imports:
                     if name.endswith(imp.name):
-                        self.addImport(node, imp.name, names)
+                        self.addImport(node, imp.name, names, as_module)
 
         comments = []
         importnames = self.unresolvable_imports.keys()

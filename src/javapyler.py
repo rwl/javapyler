@@ -33,7 +33,7 @@ class JavaPyler(object):
         # Override options, if available
         if opts.config is not None:
             for section in opts.config.sections():
-                if src.find(section):
+                if src.find(section) >= 0:
                     for k in opts.config.options(section):
                         v = opts.config.get(section, k)
                         vlower = v.lower()
@@ -48,9 +48,9 @@ class JavaPyler(object):
                                 pass
                         setattr(opts, k, v)
         # Now the real stuff
-        jp = self.javaAstToPythonAst(src, options)
-        pycode = self.generatePython(jp.module, options)
-        output = options.output
+        jp = self.javaAstToPythonAst(src, opts)
+        pycode = self.generatePython(jp.module, opts)
+        output = opts.output
         if output:
             if dst:
                 dst = os.path.join(output, dst)
