@@ -118,12 +118,15 @@ class JavaAstToPythonAst(object):
         'cast': (None, False, None),
         'charAt': ('[]', False, '__getitem__'),
         'containsKey': ('has_key', True, 'has_key'),
+        'endsWith': ('endswith', True, 'endswith'),
         'equals': ('==', False, '__eq__'),
         #'get': ('[]', False, '__getitem__'),
         'indexOf': ('index', True, 'index'),
+        'iterator': (None, False, None),
         'keySet': ('keys', True, 'keys'),
         'length': ('len', False, '__len__'),
         'size': ('len', False, '__len__'),
+        'startsWith': ('startswith', True, 'startswith'),
         'toArray': ('list', False, None),
         'toString': ('str', False, '__str__'),
     }
@@ -2206,27 +2209,37 @@ class JavaAstToPythonAst(object):
     def visitIf(self, e):
         test = self.dispatch(e.test)
         then = self.stmt(e.then, True)
+        node = None
+        comments = []
+        comments_done = []
         if e.else_ is None:
             else_ = None
         else:
-            else_ = self.stmt(e.else_)
-        node = ast.If(
-            [(test, then)],
-            else_,
-        )
+            else_ = self.stmt(e.else_, True)
+            if isinstance(else_, ast.If):
+                node = else_
+                else_ = None
+                node.tests.insert(0, (test, then))
+            if isinstance(else_, ast.Stmt) and len(else_.nodes) == 1:
+                if isinstance(else_.nodes[0], ast.If):
+                    node = else_.nodes[0]
+                    node.tests.insert(0, (test, then))
+        if node is None:
+            node = ast.If(
+                [(test, then)],
+                else_,
+            )
+            node.comments = []
+            node.comments_done = []
         # Change comments from flat list to
         # (test, then)+ else rest
-        ntests = len(node.tests)
-        node.comments = []
-        node.comments_done = [e]
+        node.comments_done.append(e)
         comments = e.comments[:]
-        while ntests > 0:
-            ntests -= 1
-            c1 = comments.pop(0)
-            c1 = [self.parseComment(c) for c in c1]
-            c2 = comments.pop(0)
-            c2 = [self.parseComment(c) for c in c2]
-            node.comments.append((c1, c2))
+        c1 = comments.pop(0)
+        c1 = [self.parseComment(c) for c in c1]
+        c2 = comments.pop(0)
+        c2 = [self.parseComment(c) for c in c2]
+        node.comments.insert(0, (c1, c2))
         while len(comments) > 0:
             c1 = comments.pop(0)
             c1 = [self.parseComment(c) for c in c1]
