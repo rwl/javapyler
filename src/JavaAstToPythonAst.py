@@ -97,16 +97,21 @@ class JavaAstToPythonAst(object):
     log_level = 0
     type_map = {
         'ArrayList': 'list',
+        'Boolean': 'bool',
+        'byte': 'int',
         'Double': 'float',
+        'Float': 'float',
         'HashMap': 'dict',
         'HashTable': 'dict',
         'int': 'int',
         'Int': 'int',
         'Integer': 'int',
         'List': 'list',
+        'Long': 'long',
         'Map': 'dict',
+        'Short': 'int',
         'String': 'str',
-        'StringBuffer:': 'str',
+        'StringBuffer': 'str',
     }
     # toArray -> list()
     # toString -> str()
@@ -126,6 +131,7 @@ class JavaAstToPythonAst(object):
         'indexOf': ('index', True, 'index'),
         'iterator': (None, False, None),
         'keySet': ('keys', True, 'keys'),
+        'lastIndexOf': ('rindex', True, 'rindex'),
         'length': ('len', False, '__len__'),
         'size': ('len', False, '__len__'),
         'startsWith': ('startswith', True, 'startswith'),
@@ -133,10 +139,54 @@ class JavaAstToPythonAst(object):
         'toArray': ('list', False, None),
         'toString': ('str', False, '__str__'),
     }
+    qualifiedName_map = {
+        'Byte.parseByte': 'int',
+        'Float.parseFloat': 'float',
+        'Integer.parseInt': 'int',
+        'Long.parseLong': 'int',
+        'Short.parseShort': 'int',
+    }
     scoped_ignore = [
         'self',
         'super',
         'System',
+    ]
+    reserved_words = [
+        'False',
+        'None',
+        'True'
+
+        'and',
+        'as',
+        'assert',
+        'break',
+        'class',
+        'continue',
+        'def',
+        'del',
+        'elif',
+        'else',
+        'except',
+        'exec',
+        'finally',
+        'for',
+        'from',
+        'global',
+        'if',
+        'import',
+        'in',
+        'is',
+        'lambda',
+        'not',
+        'or',
+        'pass',
+        'print',
+        'raise',
+        'return',
+        'try',
+        'while',
+        'with',
+        'yield',
     ]
 
     def __init__(self, srcFile, options=None, **kwargs):
@@ -864,9 +914,14 @@ class JavaAstToPythonAst(object):
                 while len(names) > 0:
                     node = ast.Getattr(node, names.pop(0))
             return node
-        if name in self.type_map:
-            return pynode([self.mapType(name)])
         names = name.split('.')
+        for i, n in enumerate(names):
+            if n in self.reserved_words:
+                names[i] = "%s_" % n
+        if names[0] in self.type_map:
+            names[0] = self.mapType(name)
+            self.block_self_scope = False
+            return pynode(names)
         if (
             names[0] in self.scoped_ignore or
             self.hasLocal(names[0]) or
@@ -1485,6 +1540,8 @@ class JavaAstToPythonAst(object):
             self.addLocal(name, None, d.typeParameters)
             self.descend()
             for p in params:
+                if p.name in self.reserved_words:
+                    p.name = '%s_' % p.name
                 self.addLocal(p.name, None, p.type)
             try:
                 depth = self.getStackDepth()
@@ -1518,6 +1575,8 @@ class JavaAstToPythonAst(object):
             return ast.Pass()
         self.descend()
         for p in params:
+            if p.name in self.reserved_words:
+                p.name = '%s_' % p.name
             self.addLocal(p.name, None, p.type)
         method = self.analyseMethodDefs(name)
         self.ascend()
@@ -2393,6 +2452,8 @@ class JavaAstToPythonAst(object):
         return self.libCallGlobalsAndLocals(fname, args)
 
     def visitQualifiedIdentifier(self, e):
+        if e.name in self.qualifiedName_map:
+            e.name = self.qualifiedName_map[e.name]
         names = e.name.split('.')
         if names[0] == 'this':
             names[0] = 'self'
