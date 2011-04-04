@@ -21,12 +21,11 @@ class GWTPyGen(PyGen):
                     patt = '\\b%s\\b' % v
                     repl = '@{{%s}}' % v
                     scomment = re.sub(patt, repl, scomment)
-            patt = '\\bthis[[]'
-            repl = '@{{self}}.'
-            scomment = re.sub(patt, repl, scomment)
-            patt = '\\bthis[.]'
-            repl = '@{{self}}.'
-            scomment = re.sub(patt, repl, scomment)
+            # Mapping from src to dst
+            for src, dst in [('this', 'self')]:
+                patt = '\\b%s\\b' % src
+                repl = '@{{%s}}' % dst
+                scomment = re.sub(patt, repl, scomment)
             self.addCode('JS("""%s""")' % scomment)
         else:
             super(GWTPyGen, self).addCommentCode(comment)
