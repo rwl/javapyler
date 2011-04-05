@@ -102,16 +102,18 @@ class JavaAstToPythonAst(object):
         'Double': 'float',
         'Float': 'float',
         'HashMap': 'dict',
-        'HashTable': 'dict',
+        'Hashtable': 'dict',
         'int': 'int',
         'Int': 'int',
         'Integer': 'int',
         'List': 'list',
         'Long': 'long',
         'Map': 'dict',
+        'RuntimeException': 'RuntimeError',
         'Short': 'int',
         'String': 'str',
         'StringBuffer': 'str',
+        'Vector': 'list',
     }
     # toArray -> list()
     # toString -> str()
@@ -334,6 +336,8 @@ class JavaAstToPythonAst(object):
         return False
 
     def addLocal(self, name, pnode, jtype):
+        if name in self.reserved_words:
+            name = '%s_' % name
         if self.opts.as_module:
             if self.getClassDepth() <= 2:
                 return self.addGlobal(name, pnode, jtype)
@@ -2637,6 +2641,8 @@ class JavaAstToPythonAst(object):
             type_ = self.dispatch(catch[0])
             if isinstance(type_, basestring):
                 type_ = ast.Name(type_)
+            elif isinstance(type_, Type):
+                type_ = ast.Name(type_.name)
             self.addLocal(catch[1].name, None, type_)
             name = self.dispatch(catch[1])
             node = self.stmt(catch[2])
