@@ -123,23 +123,67 @@ class JavaAstToPythonAst(object):
     # .get -> []
     # indexOf -> index
     method_map = {
-        # java-name : (python-name, replace, py-method)
-        'cast': (None, False, None),
-        'charAt': ('[]', False, '__getitem__'),
-        'containsKey': ('has_key', True, 'has_key'),
-        'endsWith': ('endswith', True, 'endswith'),
-        'equals': ('==', False, '__eq__'),
-        #'get': ('[]', False, '__getitem__'),
-        'indexOf': ('index', True, 'index'),
-        'iterator': (None, False, None),
-        'keySet': ('keys', True, 'keys'),
-        'lastIndexOf': ('rindex', True, 'rindex'),
-        'length': ('len', False, '__len__'),
-        'size': ('len', False, '__len__'),
-        'startsWith': ('startswith', True, 'startswith'),
-        'substring': ('[]', False, '__getslice__'),
-        'toArray': ('list', False, None),
-        'toString': ('str', False, '__str__'),
+        # java-name : {jtype: (python-name, replace, py-method)}
+        'cast': {
+            None: (None, False, None),
+        },
+        'charAt': {
+            None: ('[]', False, '__getitem__'),
+        },
+        'containsKey': {
+            None: ('has_key', True, 'has_key'),
+        },
+        'endsWith': {
+            None: ('endswith', True, 'endswith'),
+        },
+        'equals': {
+            None: ('==', False, '__eq__'),
+        },
+        'get': {
+            'Map': ('[]', False, '__getitem__'),
+            'HashMap': ('[]', False, '__getitem__'),
+            'Hashtable': ('[]', False, '__getitem__'),
+        },
+        'indexOf': {
+            None: ('index', True, 'index'),
+            'String': ('find', True, 'find'),
+        },
+        'iterator': {
+            None: (None, False, None),
+        },
+        'keySet': {
+            None: ('keys', True, 'keys'),
+        },
+        'lastIndexOf': {
+            None: ('rindex', True, 'rindex'),
+            'String': ('rfind', True, 'rfind'),
+        },
+        'length': {
+            None: ('len', False, '__len__'),
+        },
+        'println': {
+            None: (ast.Printnl, False, None),
+        },
+        'size': {
+            None: ('len', False, '__len__'),
+        },
+        'startsWith': {
+            None: ('startswith', True, 'startswith'),
+        },
+        'substring': {
+            None: ('[]', False, '__getslice__'),
+        },
+        'toArray': {
+            None: ('list', False, None),
+        },
+        'toString': {
+            None: ('str', False, '__str__'),
+        },
+    }
+    attrib_map = {
+        #'length': {
+        #    None: ('len', False, '__len__'),
+        #}
     }
     qualifiedName_map = {
         'Byte.parseByte': 'int',
@@ -314,6 +358,8 @@ class JavaAstToPythonAst(object):
             assert self.javalib[name] >= 0
 
     def addGlobal(self, name, pnode, jtype):
+        if name in self.reserved_words:
+            name = '%s_' % name
         if not name in self.globals:
             self.globals[name] = [pnode, jtype]
             if self.getClassDepth() == 1:
@@ -325,6 +371,7 @@ class JavaAstToPythonAst(object):
                 self.globals[name][0] = pnode
             if self.globals[name][1] is None:
                 self.globals[name][1] = jtype
+        return name
 
     def hasGlobal(self, name):
         if name in self.globals:
@@ -348,6 +395,7 @@ class JavaAstToPythonAst(object):
                 self.locals[-1][name][0] = pnode
             if self.locals[-1][name][1] is None:
                 self.locals[-1][name][1] = jtype
+        return name
 
     def getLocal(self, name):
         if self.opts.as_module:
@@ -358,6 +406,45 @@ class JavaAstToPythonAst(object):
 
     def hasLocal(self, name):
         return name in self.locals[-1]
+
+    def guessNodeType(self, node):
+        def javaType(jtype):
+            if isinstance(jtype, jast.Type):
+                if jtype.array:
+                    jtypes = ['Vector']
+                else:
+                    jtypes = javaType(jtype.type)
+            elif isinstance(jtype, jast.Class):
+                jtypes = [node.name]
+                if jtype.extends:
+                    for n in jtype.extends:
+                        jtypes += javaType(n)
+                if jtype.implements:
+                    for n in jtype.implements:
+                        jtypes += javaType(n)
+            elif isinstance(jtype, jast.PrimitiveType):
+                jtypes = [jtype.name]
+            elif isinstance(jtype, jast.ClassOrInterfaceType):
+                jtypes = [t[0] for t in jtype.types]
+            else:
+                raise ValueError("Not implemetend: %s" % jtype)
+            return jtypes
+            
+        if isinstance(node, ast.Name):
+            name = node.name
+        elif isinstance(node, ast.Getattr):
+            name = node.attrname
+        else:
+            return []
+        scopes = [self.globals] + self.locals
+        scopes.reverse()
+        for scope in scopes:
+            if name in scope:
+                jtype = scope[name][1]
+                if jtype is None:
+                    continue
+                return javaType(jtype)
+        return []
 
     def pushClassName(self, name):
         self.methods.append({})
@@ -374,6 +461,8 @@ class JavaAstToPythonAst(object):
         return len(self.class_names)
 
     def addMethod(self, name, **kwargs):
+        if name is None:
+            raise ValueError('addMethod name is None')
         methods = self.methods[-1]
         if not name in methods:
             methods[name] = dict(count=0, nargs={})
@@ -509,10 +598,10 @@ class JavaAstToPythonAst(object):
     def collectGlobals(self, cu):
         def unresolvable(impname):
             name = impname.split('.')[-1]
+            name = self.addGlobal(name, impname, None)
             if not impname in file_globals_guess:
                 file_globals_guess[impname] = {}
             file_globals_guess[impname][name] = None
-            self.addGlobal(name, impname, None)
             if not impname in self.unresolvable_imports:
                 self.unresolvable_imports[impname] = []
             if not name in self.unresolvable_imports[impname]:
@@ -523,8 +612,9 @@ class JavaAstToPythonAst(object):
                 return
             if fpath in file_globals:
                 for name in file_globals[fpath]:
+                    name = self.addGlobal(name, None, None)
                     pnode, jtype = file_globals[fpath][name]
-                    self.addGlobal(name, None, jtype)
+                    name = self.addGlobal(name, None, jtype)
                 return
             if fpath in file_globals_guess:
                 for name in file_globals_guess[fpath]:
@@ -541,8 +631,8 @@ class JavaAstToPythonAst(object):
                 fp.close()
                 for regex in [re_class, re_enum, re_interface]:
                     for r in regex.findall(data):
+                        r = self.addGlobal(r, fpath, None)
                         file_globals_guess[fpath][r] = None
-                        self.addGlobal(r, fpath, None)
             elif impname is not None:
                 unresolvable(impname)
 
@@ -645,7 +735,7 @@ class JavaAstToPythonAst(object):
             names.sort()
             comments.append("from %s import (%s,)" % (
                 name,
-                ', '.join([repr(n) for n in names]),
+                ', '.join([n for n in names]),
             ))
         if comments:
             empty = ast.EmptyNode()
@@ -914,9 +1004,12 @@ class JavaAstToPythonAst(object):
             if isinstance(node, basestring):
                 node = ast.Name(node)
             if len(names) > 0:
+                attrname = names[-1]
                 node = ast.Getattr(node, names.pop(0))
                 while len(names) > 0:
                     node = ast.Getattr(node, names.pop(0))
+                if attrname in self.attrib_map:
+                    node = self.mapAttrib(node, attrname)
             return node
         names = name.split('.')
         for i, n in enumerate(names):
@@ -1372,7 +1465,7 @@ class JavaAstToPythonAst(object):
             except AstInitArgs, a:
                 pass
             for p in parameters:
-                self.addLocal(p.name, p, None)
+                p.name = self.addLocal(p.name, p, None)
             state = self.popState()
             # Now for real
             self.locals = state.locals
@@ -1463,9 +1556,8 @@ class JavaAstToPythonAst(object):
                 return nodes
                 return getNodes(methlist[0])
             types.sort()
-            nodes = []
+            nodes = argsDiffNodes(nargs, diffs[types[-1]])
             ifnode = ast.If([], self.stmt(nodes))
-            nodes += argsDiffNodes(nargs, diffs[types[-1]])
             for t in types[:-1]:
                 methlist = diffs[t]
                 nodes = argsDiffNodes(nargs, methlist)
@@ -1541,12 +1633,11 @@ class JavaAstToPythonAst(object):
         if self.analysing:
             ign_expl_constr = self.ign_expl_constr
             self.ign_expl_constr = False
-            self.addLocal(name, None, d.typeParameters)
+            name = self.addLocal(name, None, d.typeParameters)
+            d.name = name
             self.descend()
             for p in params:
-                if p.name in self.reserved_words:
-                    p.name = '%s_' % p.name
-                self.addLocal(p.name, None, p.type)
+                p.name = self.addLocal(p.name, None, p.type)
             try:
                 depth = self.getStackDepth()
                 if body is not None:
@@ -1574,14 +1665,14 @@ class JavaAstToPythonAst(object):
             return ast.Pass()
         defaults = None
         method = self.getMethod(name)
+        if method is None:
+            raise ValueError('Method is None: %s' % name)
         if 'props' in method:
             self.methodAppendDoc(name, doc)
             return ast.Pass()
         self.descend()
         for p in params:
-            if p.name in self.reserved_words:
-                p.name = '%s_' % p.name
-            self.addLocal(p.name, None, p.type)
+            p.name = self.addLocal(p.name, None, p.type)
         method = self.analyseMethodDefs(name)
         self.ascend()
         generic_args = method['props']['generic_args']
@@ -1616,7 +1707,7 @@ class JavaAstToPythonAst(object):
         )
         method['node'] = node
         node.locals = method['locals']
-        self.addLocal(name, node, None)
+        node.name = self.addLocal(name, node, None)
         return node
 
     def anonClass(self, ac, dst=None):
@@ -1647,14 +1738,84 @@ class JavaAstToPythonAst(object):
         )
         return (stmt, name)
 
-    def fixCallFunc(self, e, node, arguments=None):
+    def mapAttrib(self, node, attrname=None):
+        if attrname is None:
+            attrname = node.attrname
+        attrib_map = self.attrib_map[attrname]
+        jtypes = self.guessNodeType(node.expr)
+        jtypes.append(None)
+        for jt in jtypes:
+            if jt in attrib_map:
+                break
+        else:
+            return node
+        name, replace, pyname = attrib_map[jt]
+        if replace:
+            node.attrname = name
+            return node
+        n = ast.CallFunc(
+            ast.Name(name),
+            [node.expr]
+        )
+        n.comments = node.comments
+        return n
+
+    def mapMethod(self, node, attrname, arguments):
         node_ast = ast.CallFunc
+        method_map = self.method_map[attrname]
+        jtypes = self.guessNodeType(node.expr)
+        jtypes.append(None)
+        for jt in jtypes:
+            if jt in method_map:
+                break
+        else:
+            return node, arguments, node_ast
+        name, replace, pymeth = method_map[jt]
+        if name is None:
+            return node.expr, None, node_ast
+        if replace:
+            node.attrname = name
+            return node, arguments, node_ast
+        if name is ast.Printnl:
+            node = ast.Printnl(arguments, None)
+            return node, None, node_ast
+        elif name == '[]':
+            if len(arguments) == 1:
+                node_ast = ast.Subscript
+                node = node.expr
+            elif len(arguments) == 2:
+                node_ast = ast.Slice
+                node = node.expr
+        elif name == '==':
+            assert len(arguments) == 1
+            node_ast = ast.Compare
+            node = node.expr
+        elif name == 'str' and len(arguments) == 1:
+            node = ast.Name(name)
+        else:
+            if not arguments:
+                n = ast.CallFunc(
+                    ast.Name(name),
+                    [node.expr],
+                )
+                n.comments = node.comments
+                return n, None, node_ast
+            else:
+                node = ast.Name(name)
+        return node, arguments, node_ast
+
+    def fixCallFunc(self, e, node, arguments=None, scoped=True):
+        node_ast = ast.CallFunc
+        if arguments is None:
+            arguments = [self.dispatch(a) for a in e.arguments]
         if isinstance(node, basestring):
-            node = self.scoped(node)
+            if scoped:
+                node = self.scoped(node)
         elif isinstance(node, ast.Name):
-            n = node
-            node = self.scoped(node.name)
-            node.comments = n.comments
+            if scoped:
+                n = node
+                node = self.scoped(node.name)
+                node.comments = n.comments
         elif isinstance(node, AnonymousClass):
             raise AstError(e, "AnonymousClass")
         elif isinstance(node, ast.Getattr):
@@ -1662,41 +1823,15 @@ class JavaAstToPythonAst(object):
             if isinstance(attrname, ast.Name):
                 attrname = attrname.name
             if attrname in self.method_map:
-                name, replace, pymeth = self.method_map[attrname]
-                if name is None:
-                    return node.expr
-                if replace:
-                    node.attrname = name
-                else:
-                    if name == '[]':
-                        if len(e.arguments) == 1:
-                            node_ast = ast.Subscript
-                            node = node.expr
-                        elif len(e.arguments) == 2:
-                            node_ast = ast.Slice
-                            node = node.expr
-                    elif name == '==':
-                        assert len(e.arguments) == 1
-                        node_ast = ast.Compare
-                        node = node.expr
-                    elif name == 'str' and len(e.arguments) == 1:
-                        node = ast.Name(name)
-                    else:
-                        if not e.arguments:
-                            node = ast.CallFunc(
-                                ast.Name(name),
-                                [node.expr],
-                            )
-                            node.comments = e.comments
-                            return node
-                        else:
-                            node = ast.Name(name)
-        if arguments is None:
-            arguments = e.arguments
+                node, arguments, node_ast = self.mapMethod(
+                    node, attrname, arguments,
+                )
+                if arguments is None:
+                    return node
         args = []
         stmt = self.stmt([])
         for a in arguments:
-            if not isinstance(a, ast.Node):
+            if isinstance(a, jast.Node):
                 a = self.dispatch(a)
             if isinstance(a, basestring):
                 a = ast.Name(a)
@@ -1870,9 +2005,9 @@ class JavaAstToPythonAst(object):
     def visitClass(self, e):
         if not self.opts.as_module:
             if self.getClassDepth() == 1:
-                self.addGlobal(e.name, None, e)
+                e.name = self.addGlobal(e.name, None, e)
         elif self.getClassDepth() == 2:
-            self.addGlobal(e.name, None, e)
+            e.name = self.addGlobal(e.name, None, e)
         self.pushClassName(e.name)
         self.pushState()
         self.analysing += 1
@@ -2041,7 +2176,7 @@ class JavaAstToPythonAst(object):
 
     def visitEnum(self, e):
         if self.getClassDepth() == 1:
-            self.addGlobal(e.name, None, e)
+            e.name = self.addGlobal(e.name, None, e)
         self.pushClassName(e.name)
         self.pushState()
         self.analysing += 1
@@ -2173,7 +2308,9 @@ class JavaAstToPythonAst(object):
                     init,
                 )
             nodes.append(a)
-            self.addLocal(a.nodes[0].name, a.nodes[0], e.type)
+            a.nodes[0].name = self.addLocal(
+                a.nodes[0].name, a.nodes[0], e.type,
+            )
         return self.stmt(nodes)
 
     def visitFor(self, e):
@@ -2252,7 +2389,7 @@ class JavaAstToPythonAst(object):
 
     def visitForEach(self, e):
         name = e.var[1].name
-        self.addLocal(name, None, e.var[0])
+        name = self.addLocal(name, None, e.var[0])
         var = self.dispatch(e.var[1])
         test = self.dispatch(e.test)
         body = self.stmt(e.nodes)
@@ -2346,17 +2483,28 @@ class JavaAstToPythonAst(object):
         type_ = self.dispatch(e.type)
         assert isinstance(type_, Type)
         type_ = self.mapType(type_.name)
-        return self.fixCallFunc(
+        comments = None
+        if isinstance(e.type, jast.Type) and e.type.array:
+            comments = ['Array %s of %s' % (''.join(e.type.array), type_)]
+            type_ = 'list'
+        node = self.fixCallFunc(
             e,
             ast.Name("isinstance"),
             [e.node, ast.Name(type_)],
+            scoped=False,
         )
+        if comments is not None:
+            if node.comments is None:
+                node.comments = comments
+            else:
+                node.comments += comments
+        return node
 
     def visitInterface(self, e):
         return self.visitClass(e)
 
     def visitLabel(self, e):
-        self.addLocal(e.name, None, None)
+        e.name = self.addLocal(e.name, None, None)
         nodes = []
         nodes.append(ast.Assign(
                 [ast.AssName(e.name, 'OP_ASSIGN')],
@@ -2402,14 +2550,14 @@ class JavaAstToPythonAst(object):
             if isinstance(init, AnonymousClass):
                 raise AstError(e, "AnonymousClass")
             if init is None:
-                self.addLocal(name, None, e.type)
+                name = self.addLocal(name, None, e.type)
             else:
                 a = ast.Assign(
                         [ast.AssName(name, 'OP_ASSIGN')],
                         init,
                     )
                 nodes.append(a)
-                self.addLocal(name, a.nodes[0], e.type)
+                name = self.addLocal(name, a.nodes[0], e.type)
         return self.stmt(nodes)
 
     def visitMethod(self, e):
@@ -2643,7 +2791,7 @@ class JavaAstToPythonAst(object):
                 type_ = ast.Name(type_)
             elif isinstance(type_, Type):
                 type_ = ast.Name(type_.name)
-            self.addLocal(catch[1].name, None, type_)
+            catch[1].name = self.addLocal(catch[1].name, None, type_)
             name = self.dispatch(catch[1])
             node = self.stmt(catch[2])
             handlers.append((type_, name, node))
@@ -2674,19 +2822,19 @@ class JavaAstToPythonAst(object):
         name = e.name
         if init is None:
             node = ast.Pass()
-            self.addLocal(name, node)
+            name = self.addLocal(name, node)
         else:
             init = self.dispatch(init)
             assert init is not None
             if isinstance(init, AnonymousClass):
                 cls, name = self.anonClass(init, ast.Name(name))
-                self.addLocal(name, cls)
+                name = self.addLocal(name, cls)
                 return cls
             node = ast.Assign(
                     [ast.AssName(name, 'OP_ASSIGN')],
                     init,
             )
-            self.addLocal(name, node.nodes[0], None)
+            name = self.addLocal(name, node.nodes[0], None)
         return node
 
     def visitWhile(self, e):

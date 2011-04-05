@@ -496,6 +496,16 @@ class PyGen(object):
     def astPass(self, node):
         return 'pass'
 
+    def astPrint(self, node):
+        assert node.dest is None
+        arg = ', '.join([self.dispatch(n) for n in node.nodes])
+        self.addCode("print %s," % arg)
+
+    def astPrintnl(self, node):
+        assert node.dest is None
+        arg = ', '.join([self.dispatch(n) for n in node.nodes])
+        self.addCode("print %s" % arg)
+
     def astRaise(self, node):
         expr1 = self.dispatch(node.expr1)
         expr2 = self.dispatch(node.expr2)

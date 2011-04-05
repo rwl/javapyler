@@ -539,6 +539,8 @@ class JavaWalker(object):
                 nodes = self.dispatch(c)
             else:
                 self.unknown_token(c)
+        if extends is not None and not isinstance(extends, list):
+            extends = [extends]
         node = self.node(
             token, ast.Class, name, doc, nodes, types, 
             extends, implements, modifiers,
@@ -562,9 +564,9 @@ class JavaWalker(object):
         return self.node(token, ast.ClassOrInterfaceType, types)
 
     def walk_ConditionalExpression(self, token, children):
-        test = self.pop()
+        then = self.pop()
         assert len(children) >= 2, "%s %r" % (cls.__name__, children)
-        then = self.dispatch(children[0])
+        test = self.dispatch(children[0])
         else_ = self.dispatch(children[1])
         children = children[2:]
         while children:
