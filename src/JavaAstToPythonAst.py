@@ -1838,6 +1838,18 @@ class JavaAstToPythonAst(object):
                 if isinstance(arguments[0], ast.Const) \
                    and arguments[0].value == 0:
                     arguments[0] = None
+                a = arguments[1]
+                if (
+                    isinstance(node.expr, ast.Name)
+                    and isinstance(a, ast.Sub)
+                    and isinstance(a.left, ast.CallFunc)
+                    and isinstance(a.left.node, ast.Name)
+                    and a.left.node.name == 'len'
+                    and len(a.left.args) == 1
+                    and isinstance(a.left.args[0], ast.Name)
+                    and a.left.args[0].name
+                ):
+                    arguments[1] = ast.UnarySub(a.right)
                 node = node.expr
         elif name == '==':
             assert len(arguments) == 1
