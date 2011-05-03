@@ -1835,6 +1835,9 @@ class JavaAstToPythonAst(object):
                 node = node.expr
             elif len(arguments) == 2:
                 node_ast = ast.Slice
+                if isinstance(arguments[0], ast.Const) \
+                   and arguments[0].value == 0:
+                    arguments[0] = None
                 node = node.expr
         elif name == '==':
             assert len(arguments) == 1
