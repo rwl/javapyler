@@ -337,10 +337,17 @@ class PyGen(object):
             self.pushComment(comment)
 
     def astFrom(self, node):
+        def name(n):
+            if isinstance(n, basestring):
+                return n
+            if n[1] is None:
+                return n[0]
+            return '%s as %s' % (n[0], n[1])
+
         self.addCode(
             "from %s import (%s,)" % (
                 node.modname,
-                ', '.join(node.names),
+                ', '.join([name(n) for n in node.names]),
             ),
         )
         self.addComment(node)
@@ -440,6 +447,21 @@ class PyGen(object):
         then = self.dispatch(node.then)
         else_ = self.dispatch(node.else_)
         return "%s if %s else %s" % (test, then, else_)
+
+    def astImport(self, node):
+        def name(n):
+            if isinstance(n, basestring):
+                return n
+            if n[1] is None:
+                return n[0]
+            return '%s as %s' % (n[0], n[1])
+
+        self.addCode(
+            "import %s" % (
+                ', '.join([name(n) for n in node.names]),
+            ),
+        )
+        self.addComment(node)
 
     def astInvert(self, node):
         return "~%s" % self.par_expr(node.expr, self.dispatch(node.expr))

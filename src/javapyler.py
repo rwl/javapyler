@@ -51,12 +51,23 @@ class JavaPyler(object):
         jp = self.javaAstToPythonAst(src, opts)
         pycode = self.generatePython(jp.module, opts)
         output = opts.output
-        if output:
-            if dst:
-                dst = os.path.join(output, dst)
+        if not output:
+            dst = os.path.join(output, src)
+        elif dst:
+            dst = os.path.join(output, dst)
+        elif not opts.java_base:
+            dst = os.path.join(output, src)
+        else:
+            dst = opts.java_base.split('.')
+            dst = "%s%s" % (os.path.join(*dst), os.sep)
+            i = src.find(dst)
+            if i < 0:
+                dst = src
             else:
-                dst = os.path.join(output, src)
-                dst = "%s.py" % dst[:-5]
+                dst = os.path.join(output, src[i+len(dst):])
+        if dst.endswith('java'):
+            dst = "%s.py" % dst[:-5]
+        assert src != dst
         self.output(dst, pycode)
 
     def javaAstToPythonAst(self, src, options):

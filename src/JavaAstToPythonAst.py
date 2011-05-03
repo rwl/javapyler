@@ -19,6 +19,7 @@ from javaparser.JavaWalker import JavaWalker
 import javaparser.JavaAst as jast
 from org.antlr.runtime import ANTLRFileStream, CommonTokenStream
 from fixes import *
+from JavaPackages import java_packages
 
 
 # Monkey patch ast.None to have a default comments
@@ -27,6 +28,7 @@ ast.Node.comments = None
 
 file_globals = {}
 file_globals_guess = {}
+fixme = '!FIXME!'
 
 
 class State(object):
@@ -96,24 +98,33 @@ class Type(object):
 class JavaAstToPythonAst(object):
     log_level = 0
     type_map = {
-        'ArrayList': 'list',
-        'Boolean': 'bool',
-        'byte': 'int',
-        'Double': 'float',
-        'Float': 'float',
-        'HashMap': 'dict',
-        'Hashtable': 'dict',
-        'int': 'int',
-        'Int': 'int',
-        'Integer': 'int',
-        'List': 'list',
-        'Long': 'long',
-        'Map': 'dict',
-        'RuntimeException': 'RuntimeError',
-        'Short': 'int',
-        'String': 'str',
-        'StringBuffer': 'str',
-        'Vector': 'list',
+        # java type: (py-type, py-import)
+        'ArrayList': ('list', None),
+        'Boolean': ('bool', None),
+        'BufferedReader': ('StringIO', ast.TryExcept(
+                ast.Stmt([ast.From('cStringIO', [('StringIO', None)], 0)]),
+                [(
+                    ast.Name('ImportError'),
+                    ast.AssName('e', 'OP_ASSIGN'),
+                    ast.Stmt([ast.From('StringIO', [('StringIO', None)], 0)]),
+                )],
+                None)),
+        'byte': ('int', None),
+        'Double': ('float', None),
+        'Float': ('float', None),
+        'HashMap': ('dict', None),
+        'Hashtable': ('dict', None),
+        'int': ('int', None),
+        'Int': ('int', None),
+        'Integer': ('int', None),
+        'List': ('list', None),
+        'Long': ('long', None),
+        'Map': ('dict', None),
+        'RuntimeException': ('RuntimeError', None),
+        'Short': ('int', None),
+        'String': ('str', None),
+        'StringBuffer': ('str', None),
+        'Vector': ('list', None),
     }
     # toArray -> list()
     # toString -> str()
@@ -124,6 +135,9 @@ class JavaAstToPythonAst(object):
     # indexOf -> index
     method_map = {
         # java-name : {jtype: (python-name, replace, py-method)}
+        'append': {
+            'StringBuffer': ('__add__', True, '__add__'),
+        },
         'cast': {
             None: (None, False, None),
         },
@@ -148,6 +162,9 @@ class JavaAstToPythonAst(object):
             None: ('index', True, 'index'),
             'String': ('find', True, 'find'),
         },
+        'insert': {
+            'StringBuffer': ('%sinsert' % fixme, True, 'insert'),
+        },
         'iterator': {
             None: (None, False, None),
         },
@@ -163,6 +180,9 @@ class JavaAstToPythonAst(object):
         },
         'println': {
             None: (ast.Printnl, False, None),
+        },
+        'readLine': {
+            'BufferedReader': ('readline', True, 'readline'),
         },
         'size': {
             None: ('len', False, '__len__'),
@@ -186,16 +206,20 @@ class JavaAstToPythonAst(object):
         #}
     }
     qualifiedName_map = {
-        'Byte.parseByte': 'int',
-        'Float.parseFloat': 'float',
-        'Integer.parseInt': 'int',
-        'Long.parseLong': 'int',
-        'Short.parseShort': 'int',
+        'Byte.parseByte': ('int', None),
+        'Float.parseFloat': ('float', None),
+        'Integer.parseInt': ('int', None),
+        'Long.parseLong': ('int', None),
+        'Short.parseShort': ('int', None),
+        'System.in': ('sys.stdin', ast.Import([('sys', None)])),
+        'System.out': ('sys.stdout', ast.Import([('sys', None)])),
     }
     scoped_ignore = [
         'self',
         'super',
         'System',
+        # From qualifiedName_map:
+        #'sys',
     ]
     reserved_words = [
         'False',
@@ -253,6 +277,8 @@ class JavaAstToPythonAst(object):
         walker = JavaWalker()
         cu = walker.walk(tree, tokens)
 
+        if not hasattr(self, 'java_packages'):
+            self.java_packages = java_packages
         self.locals = [{}]
         self.globals = {}
         self.globals_ref = {}
@@ -269,6 +295,7 @@ class JavaAstToPythonAst(object):
         self.javadocs = []
         self.javalib = {}
         self.unresolvable_imports = {}
+        self.pyimports = []
         self.block_self_scope = False
         for i in range(tokens.size()):
             t = tokens.get(i)
@@ -319,6 +346,7 @@ class JavaAstToPythonAst(object):
                 stmt.nodes.append(ast.From(javalib, names, 0, None))
 
         self.createImports(stmt, cu)
+        stmt.nodes += self.pyimports
         stmt.nodes += nodes
         self.flatten_stmt(stmt, True)
 
@@ -532,7 +560,23 @@ class JavaAstToPythonAst(object):
         return varname, init
 
     def mapType(self, type_):
-        return self.type_map.get(type_, type_)
+        py = self.type_map.get(type_)
+        if py is None:
+            return type_
+        pytype, pyimport = py
+        if pyimport != None and not pyimport in self.pyimports:
+            self.pyimports.append(pyimport)
+        return pytype
+
+    def mapQualifiedName(self, name):
+        py = self.qualifiedName_map.get(name)
+        if py is None:
+            return name
+        pyname, pyimport = py
+        if pyimport != None and not pyimport in self.pyimports:
+            self.pyimports.append(pyimport)
+        self.block_self_scope = True
+        return pyname
 
     def descend(self):
         self.locals.append({})
@@ -651,6 +695,10 @@ class JavaAstToPythonAst(object):
         for imp in imports:
             impname = imp.name
             wildcard = imp.wildcard
+            if wildcard and impname in self.java_packages:
+                for name in self.java_packages[impname]:
+                    self.addGlobal(name, impname, None)
+                continue
             imp = impname.split('.')
             while not imp[0] in src:
                 imp.pop(0)
@@ -999,6 +1047,8 @@ class JavaAstToPythonAst(object):
         return dst
      
     def scoped(self, name):
+        if name == 'sys.stdin' and not self.block_self_scope:
+            raise ValueError('stdin')
         def pynode(names):
             node = names.pop(0)
             if isinstance(node, basestring):
@@ -1026,7 +1076,7 @@ class JavaAstToPythonAst(object):
         ):
             self.block_self_scope = False
             return pynode(names)
-        if  self.block_self_scope:
+        if self.block_self_scope:
             self.block_self_scope = False
             return pynode(names)
         if self.getClassDepth() <= 2 and len(self.locals) <= 2:
@@ -2257,7 +2307,7 @@ class JavaAstToPythonAst(object):
                 expr = e.nodes[0].body[0]
                 if isinstance(expr, jast.Return):
                     right = self.dispatch(expr.expr)
-            right.comments = ['FIXME: EnumConstant (line: %s)' % e.lineno]
+            right.comments = ['%s: EnumConstant (line: %s)' % (fixme, e.lineno)]
         if not e.arguments:
             node = ast.Assign(
                 [ast.AssName(name, 'OP_ASSIGN')],
@@ -2539,19 +2589,19 @@ class JavaAstToPythonAst(object):
                 init = self.dispatch_list(init)
                 init = ast.List(init)
             else:
-                if init is not None:
-                    init = self.dispatch(init)
-                    if isinstance(init, AnonymousClass):
-                        cls, name = self.anonClass(init, v)
-                        cls = init.cls_node
-                        cls.name = v.name
-                        nodes.append(cls)
-                        continue
+                init = self.dispatch(init)
+                if isinstance(init, AnonymousClass):
+                    cls, name = self.anonClass(init, v)
+                    cls = init.cls_node
+                    cls.name = v.name
+                    nodes.append(cls)
+                    continue
             if isinstance(init, AnonymousClass):
                 raise AstError(e, "AnonymousClass")
             if init is None:
                 name = self.addLocal(name, None, e.type)
             else:
+                name = self.addLocal(name, None, e.type)
                 a = ast.Assign(
                         [ast.AssName(name, 'OP_ASSIGN')],
                         init,
@@ -2604,9 +2654,7 @@ class JavaAstToPythonAst(object):
         return self.libCallGlobalsAndLocals(fname, args)
 
     def visitQualifiedIdentifier(self, e):
-        if e.name in self.qualifiedName_map:
-            e.name = self.qualifiedName_map[e.name]
-        names = e.name.split('.')
+        names = self.mapQualifiedName(e.name).split('.')
         if names[0] == 'this':
             names[0] = 'self'
         if names[-1] == 'this':
