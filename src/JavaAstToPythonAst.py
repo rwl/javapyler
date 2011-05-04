@@ -299,6 +299,7 @@ class JavaAstToPythonAst(object):
         self.unresolvable_imports = {}
         self.pyimports = []
         self.block_self_scope = False
+        self.add_main = None
         for i in range(tokens.size()):
             t = tokens.get(i)
             if t.getChannel() == t.HIDDEN_CHANNEL:
@@ -350,6 +351,29 @@ class JavaAstToPythonAst(object):
         self.createImports(stmt, cu)
         stmt.nodes += self.pyimports
         stmt.nodes += nodes
+        if self.add_main is not None:
+            if self.opts.as_module:
+                node = ast.Name('main')
+            else:
+                node = ast.Getattr(ast.CallFunc(
+                    ast.Name(self.add_main), [], None, None,
+                ), 'main')
+            stmt.nodes += [
+                ast.If([(
+                    ast.Compare(
+                        ast.Name('__name__'),
+                        [('==', ast.Const('__main__'))],
+                    ),
+                    ast.Stmt([
+                        ast.Import([('sys', None)]),
+                        ast.Discard(ast.CallFunc(
+                            node,
+                            [ast.Getattr(ast.Name('sys'), 'argv')],
+                            None,
+                            None,
+                        )),
+                    ]),
+                )], None)]
         self.flatten_stmt(stmt, True)
 
     def pushState(self):
@@ -1739,6 +1763,8 @@ class JavaAstToPythonAst(object):
             parameters = self.dispatch_list(params)
         else:
             parameters = []
+        if name == 'main' and self.getClassDepth() <= 2:
+            self.add_main = self.class_names[-1]
         if not self.opts.as_module or self.getClassDepth() > 2:
             parameters.insert(0, ast.Name('self'))
         flags = 0
