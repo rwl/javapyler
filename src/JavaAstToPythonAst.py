@@ -213,6 +213,8 @@ class JavaAstToPythonAst(object):
         'Short.parseShort': ('int', None),
         'System.in': ('sys.stdin', ast.Import([('sys', None)])),
         'System.out': ('sys.stdout', ast.Import([('sys', None)])),
+        # this is very dirty: 1000 * time.time
+        'System.currentTimeMillis': ('1000 * time.time', ast.Import([('time', None)])),
     }
     scoped_ignore = [
         'self',
@@ -1833,6 +1835,9 @@ class JavaAstToPythonAst(object):
             if len(arguments) == 1:
                 node_ast = ast.Subscript
                 node = node.expr
+                if pymeth == '__getslice__':
+                    node_ast = ast.Slice
+                    arguments.append(None)
             elif len(arguments) == 2:
                 node_ast = ast.Slice
                 if isinstance(arguments[0], ast.Const) \
