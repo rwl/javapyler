@@ -91,6 +91,8 @@ class JavaPyler(object):
 
 
 def handle_config_option(option, opt, value, parser, *args, **kwargs):
+    fp = open(value, 'r')
+    del fp
     parser.values.config_file = value
     config = ConfigParser()
     parser.values.config = config
