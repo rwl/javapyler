@@ -2,11 +2,12 @@ from py2 import ast
 
 
 class PyGenState(object):
-    
+
     def __init__(self, **kwargs):
         self.kw = kwargs.keys()
         for k, v in kwargs.iteritems():
             setattr(self, k, v)
+
 
 class PyGen(object):
 
@@ -21,9 +22,15 @@ class PyGen(object):
         self.code = []
         self.state_stack = []
         self.comment_stack = []
-    
+
     def getCode(self):
-        return "\n".join(self.code)
+        code = self.code[:]
+        while len(code) > 0 and code[-1] in ['', '\n']:
+            code.pop()
+        code = "\n".join(code)
+        if len(code) > 0 and code[-1] != '\n':
+            code = "%s\n" % code
+        return code
 
     def getIndent(self):
         return '    ' * self.indent
@@ -106,7 +113,6 @@ class PyGen(object):
                 self.addCode('"""', checkComment=False)
         self.addComment()
 
-
     def addCommentCode(self, comment):
         if isinstance(comment, list):
             for c in comment:
@@ -132,18 +138,27 @@ class PyGen(object):
                     comment = node.comments.pop(0)
                     self.addCommentCode(comment)
 
+    def line_spacing(self, spacings):
+        try:
+            spacing = spacings[-1]
+            spacing = spacings[self.indent]
+        except IndexError:
+            spacing = 1
+        spacing_list = [''] * spacing
+        while self.code[-spacing:] != spacing_list:
+            self.addCode('')
+
     def par_expr(self, node, code, cls=None):
         if (
-            isinstance(node, ast.Name)
-            or isinstance(node, ast.Const)
-            or isinstance(node, ast.UnaryAdd)
-            or isinstance(node, ast.UnarySub)
-            or isinstance(node, ast.CallFunc)
-            or isinstance(node, ast.Getattr)
-            or isinstance(node, ast.Subscript)
-            or isinstance(node, ast.List)
-            or isinstance(node, ast.Tuple)
-        ):
+            isinstance(node, ast.Name) or
+            isinstance(node, ast.Const) or
+            isinstance(node, ast.UnaryAdd) or
+            isinstance(node, ast.UnarySub) or
+            isinstance(node, ast.CallFunc) or
+            isinstance(node, ast.Getattr) or
+            isinstance(node, ast.Subscript) or
+            isinstance(node, ast.List) or
+            isinstance(node, ast.Tuple)):
             return code
         if ast is not None:
             if node.__class__ is cls:
@@ -270,8 +285,7 @@ class PyGen(object):
             bases = "(%s)" % bases[0]
         else:
             bases = "(%s)" % ', '.join(list(bases))
-        self.addCode("")
-        self.addCode("")
+        self.line_spacing([2,1])
         self.addCode(
             "class %s%s:" % (
                 node.name,
@@ -283,6 +297,7 @@ class PyGen(object):
         self.addComment(node)
         self.dispatch(node.code)
         self.indent -= 1
+        self.line_spacing([2,1])
 
     def astCompare(self, node):
         self.pushState()
@@ -337,6 +352,7 @@ class PyGen(object):
             self.pushComment(comment)
 
     def astFrom(self, node):
+
         def name(n):
             if isinstance(n, basestring):
                 return n
@@ -372,9 +388,9 @@ class PyGen(object):
             idx -= 1
         while defaults:
             idx -= 1
-            args[idx]  = "%s=%s" % (args[idx], defaults.pop())
+            args[idx] = "%s=%s" % (args[idx], defaults.pop())
         args = ', '.join(args)
-        self.addCode("")
+        self.line_spacing([2,1])
         self.addCode(
             "def %s(%s):" % (
                 node.name,
@@ -387,6 +403,7 @@ class PyGen(object):
         self.dispatch(node.code)
         self.addComment(node.code)
         self.indent -= 1
+        self.line_spacing([2,1])
 
     def astGetattr(self, node):
         if isinstance(node.attrname, basestring):
@@ -394,7 +411,7 @@ class PyGen(object):
         else:
             attrname = self.dispatch(node.attrname)
         return "%s.%s" % (
-            self.dispatch(node.expr), 
+            self.dispatch(node.expr),
             attrname,
         )
 
@@ -449,6 +466,7 @@ class PyGen(object):
         return "%s if %s else %s" % (test, then, else_)
 
     def astImport(self, node):
+
         def name(n):
             if isinstance(n, basestring):
                 return n
