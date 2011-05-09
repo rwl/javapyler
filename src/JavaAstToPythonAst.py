@@ -680,6 +680,11 @@ class JavaAstToPythonAst(object):
         def handleFile(fpath, impname=None):
             if fpath == self.absSrcFile:
                 return
+            if os.path.isdir(fpath):
+                for p in os.listdir(fpath):
+                    p = os.path.join(fpath, p)
+                    if p.endswith('.java'):
+                        handleFile(p)
             if fpath in file_globals:
                 for name in file_globals[fpath]:
                     name = self.addGlobal(name, None, None)
@@ -734,7 +739,11 @@ class JavaAstToPythonAst(object):
                 unresolvable(impname)
                 continue
             fpath = src[:src.index(imp[0])] + imp
-            fpath = "%s.java" % os.path.sep.join(fpath)
+            if wildcard:
+                fpath = os.path.sep.join(fpath)
+                impname = '%s.*' % impname
+            else:
+                fpath = "%s.java" % os.path.sep.join(fpath)
             handleFile(fpath, impname)
         return
 
@@ -755,6 +764,13 @@ class JavaAstToPythonAst(object):
             name = '.'.join(names[:-1])
             names = [names[-1]]
         name = self.mapImport(name)
+        for n in node.nodes:
+            if isinstance(n, ast.From) and n.modname == name:
+                for name in names:
+                    if not name in n.names:
+                        n.names.append(name)
+                n.names.sort()
+                return
         node.nodes.append(ast.From(name, names, 0, None))
 
     def createImports(self, node, cu):
@@ -775,7 +791,9 @@ class JavaAstToPythonAst(object):
                             files[fpath] = {}
                         files[fpath][u] = 1
                         found = True
-                if not found: print 'Could not resolve import for', u
+                #also not found for as_module globals
+                if not found and not self.opts.as_module:
+                    print 'Could not resolve import for', u
         if self.package_name is None:
             pkg = []
         else:
@@ -795,21 +813,29 @@ class JavaAstToPythonAst(object):
                 name = name[:-5]
                 self.addImport(node, name, names, as_module)
             else:
-                name = '.'.join(name)
-                name = name[:-5]
+                name[-1] = name[-1][:-5]
+                parent_name = '.'.join(name[:-1])
+                impname = '.'.join(name)
                 for imp in cu.imports:
-                    if name.endswith(imp.name):
+                    if impname.endswith(imp.name):
                         self.addImport(node, imp.name, names, as_module)
-
+                    elif imp.wildcard and parent_name.endswith(imp.name):
+                        impname = '%s.%s' % (imp.name, name[-1])
+                        self.addImport(node, impname, names, as_module)
         comments = []
         importnames = self.unresolvable_imports.keys()
         importnames.sort()
         for name in importnames:
             names = self.unresolvable_imports[name]
             names.sort()
-            comments.append("from %s import (%s,)" % (
+            if names == ['*']:
+                name = '.'.join(name.split('.')[:-1])
+                names = '*'
+            else:
+                names = "(%s,)" % ', '.join([n for n in names])
+            comments.append("from %s import %s" % (
                 name,
-                ', '.join([n for n in names]),
+                names,
             ))
         if comments:
             empty = ast.EmptyNode()
