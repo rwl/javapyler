@@ -204,9 +204,10 @@ class JavaAstToPythonAst(object):
         },
     }
     attrib_map = {
-        #'length': {
-        #    None: ('len', False, '__len__'),
-        #}
+        'length': {
+            'String': ('len', False, '__len__'),
+            'Vector': ('len', False, '__len__'),
+        }
     }
     qualifiedName_map = {
         'Byte.parseByte': ('int', None),
