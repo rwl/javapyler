@@ -2,6 +2,7 @@
 
 import sys
 import os
+import time
 base = __file__
 base = os.path.abspath(base)
 base = os.path.dirname(base)
@@ -28,6 +29,7 @@ ast.Node.comments = None
 
 file_globals = {}
 file_globals_guess = {}
+collect_globals_time = 0
 fixme = '!FIXME!'
 
 
@@ -381,6 +383,12 @@ class JavaAstToPythonAst(object):
                 )], None)]
         self.flatten_stmt(stmt, True)
 
+    def timings(self):
+        global collect_globals_time
+        return dict(
+            collect_globals_time=collect_globals_time,
+        )
+
     def pushState(self):
         self.state_stack.append(State(
             globals=self.globals,
@@ -671,6 +679,9 @@ class JavaAstToPythonAst(object):
         node.doc = self.parseComment(comment)
 
     def collectGlobals(self, cu):
+        global collect_globals_time
+        t0 = time.time()
+
         def unresolvable(impname):
             name = impname.split('.')[-1]
             name = self.addGlobal(name, impname, None)
@@ -750,6 +761,7 @@ class JavaAstToPythonAst(object):
             else:
                 fpath = "%s.java" % os.path.sep.join(fpath)
             handleFile(fpath, impname)
+        collect_globals_time += time.time() - t0
         return
 
     def mapImport(self, name):
@@ -2507,10 +2519,10 @@ class JavaAstToPythonAst(object):
                 ),
                 ast.If(
                     [(
-                        compare,
-                        ast.Pass(),
+                        ast.Not(compare),
+                        ast.Break(),
                     )],
-                    ast.Break(),
+                    None,
                 ),
                 body,
             ]),

@@ -49,6 +49,8 @@ class JavaPyler(object):
                         setattr(opts, k, v)
         # Now the real stuff
         jp = self.javaAstToPythonAst(src, opts)
+        if opts.timing:
+            print jp.timings()
         pycode = self.generatePython(jp.module, opts)
         output = opts.output
         if not output:
@@ -148,6 +150,12 @@ parser.add_option(
     '--output',
     dest='output',
     help='base directory for generated python files'
+)
+parser.add_option(
+    '--timing',
+    dest='timing',
+    action='store_true',
+    help='collect and print timing characteristics'
 )
 
 parser.add_option(
