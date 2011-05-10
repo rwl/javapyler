@@ -216,6 +216,7 @@ class JavaAstToPythonAst(object):
         'Short.parseShort': ('int', None),
         'System.in': ('sys.stdin', ast.Import([('sys', None)])),
         'System.out': ('sys.stdout', ast.Import([('sys', None)])),
+        'System.out.print': ('sys.stdout.write', ast.Import([('sys', None)])),
         # this is very dirty: 1000 * time.time
         'System.currentTimeMillis': ('1000 * time.time', ast.Import([('time', None)])),
     }
