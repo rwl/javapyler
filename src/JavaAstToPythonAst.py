@@ -780,6 +780,8 @@ class JavaAstToPythonAst(object):
         for u in unresolved:
             fpath = self.globals[u][0]
             if isinstance(fpath, basestring):
+                if fpath == self.absSrcFile:
+                    continue
                 if not fpath in files:
                     files[fpath] = {}
                 files[fpath][u] = 1
@@ -791,14 +793,16 @@ class JavaAstToPythonAst(object):
                             files[fpath] = {}
                         files[fpath][u] = 1
                         found = True
-                #also not found for as_module globals
+                # Also not found for as_module globals
                 if not found and not self.opts.as_module:
-                    print 'Could not resolve import for', u
+                   self.warning('Could not resolve import for %s', u)
         if self.package_name is None:
             pkg = []
         else:
             pkg = self.package_name.split('.')
         for fpath in files:
+            if fpath == self.absSrcFile:
+                continue
             as_module = False
             for section in self.opts.config.sections():
                 if fpath.find(section) >= 0:
