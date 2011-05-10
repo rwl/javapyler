@@ -221,7 +221,6 @@ class JavaAstToPythonAst(object):
         'System.currentTimeMillis': ('1000 * time.time', ast.Import([('time', None)])),
     }
     scoped_ignore = [
-        'self',
         'super',
         'System',
         # From qualifiedName_map:
@@ -291,6 +290,7 @@ class JavaAstToPythonAst(object):
         self.class_names = []
         self.methods = [{}]
         self.tmpvars = [{}]
+        self.method_var = []
         self.analysing = 0
         self.ign_expl_constr = False
         self.raise_expl_constr = True
@@ -1130,6 +1130,7 @@ class JavaAstToPythonAst(object):
             self.block_self_scope = False
             return pynode(names)
         if (
+            names[0] in self.method_var or
             names[0] in self.scoped_ignore or
             self.hasLocal(names[0]) or
             self.hasGlobal(names[0])
@@ -1144,7 +1145,9 @@ class JavaAstToPythonAst(object):
                 ast.Name('super'),
                 [ast.Name(self.getClassName(self.getClassDepth() - 1))],
             )] + names)
-        return pynode(['self'] + names)
+        if len(self.method_var) > 0:
+            return pynode([self.method_var[-1]] + names)
+        return pynode(names)
 
     def node(self, java_node, py_node):
         if java_node.comments:
@@ -1599,7 +1602,7 @@ class JavaAstToPythonAst(object):
             else:
                 parameters = []
             if not self.opts.as_module or self.getClassDepth() > 2:
-                parameters.insert(0, ast.Name('self'))
+                parameters.insert(0, ast.Name(self.method_var[-1]))
 
             nodes = []
             args = [ast.AssName(a.name, 'OP_ASSIGN') for a in parameters[1:]]
@@ -1740,6 +1743,10 @@ class JavaAstToPythonAst(object):
         return ast.Pass()
 
     def methodDeclaration(self, d, name, doc, params, body):
+        if 'static' in d.modifiers:
+            self.method_var.append('cls')
+        else:
+            self.method_var.append('self')
         if self.analysing:
             ign_expl_constr = self.ign_expl_constr
             self.ign_expl_constr = False
@@ -1771,8 +1778,10 @@ class JavaAstToPythonAst(object):
                     is_this=a.is_this,
                 )
             self.ascend()
+            self.method_var.pop()
             self.ign_expl_constr = ign_expl_constr
             return ast.Pass()
+        decorators = None
         defaults = None
         method = self.getMethod(name)
         if method is None:
@@ -1800,7 +1809,9 @@ class JavaAstToPythonAst(object):
         if name == 'main' and self.getClassDepth() <= 2:
             self.add_main = self.class_names[-1]
         if not self.opts.as_module or self.getClassDepth() > 2:
-            parameters.insert(0, ast.Name('self'))
+            parameters.insert(0, ast.Name(self.method_var[-1]))
+            if 'static' in d.modifiers:
+                decorators = ast.Decorators([ast.Name('classmethod')])
         flags = 0
         if generic_args:
             flags = ast.CO_VARARGS
@@ -1809,7 +1820,7 @@ class JavaAstToPythonAst(object):
         elif len(params) > 0 and '...' in params[-1].type_modifier:
             flags = ast.CO_VARARGS
         node = ast.Function(
-            None, # decorators
+            decorators,
             name,
             parameters,
             defaults,
@@ -1820,6 +1831,7 @@ class JavaAstToPythonAst(object):
         method['node'] = node
         node.locals = method['locals']
         node.name = self.addLocal(name, node, None)
+        self.method_var.pop()
         return node
 
     def anonClass(self, ac, dst=None):
@@ -1835,7 +1847,7 @@ class JavaAstToPythonAst(object):
                 assert len(names) == 2
                 stmt.nodes.append(ast.Assign(
                     [ast.AssName(tmpname, 'OP_ASSIGN')],
-                    ast.Name('self'),
+                    ast.Name(self.method_var[-1]),
                 ))
         stmt.nodes.append(cls)
         name = ast.Name(anonvar)
@@ -2549,12 +2561,12 @@ class JavaAstToPythonAst(object):
 
     def visitIdentifier(self, e):
         if e.name == 'this':
-            return ast.Name('self')
+            return ast.Name(self.method_var[-1])
         if e.name == 'super':
             self.block_self_scope = True
             node = ast.CallFunc(
                 ast.Name('super'),
-                [ast.Name(self.getClassName()), ast.Name("self")],
+                [ast.Name(self.getClassName()), ast.Name(self.method_var[-1])],
             )
             return node
         name = self.scoped(e.name)
@@ -2736,7 +2748,7 @@ class JavaAstToPythonAst(object):
     def visitQualifiedIdentifier(self, e):
         names = self.mapQualifiedName(e.name).split('.')
         if names[0] == 'this':
-            names[0] = 'self'
+            names[0] = self.method_var[-1]
         if names[-1] == 'this':
             name = '_%s' % '_'.join(names)
             value = (e.name, name, names)
@@ -2753,7 +2765,7 @@ class JavaAstToPythonAst(object):
                 e,
                 ast.CallFunc(
                     ast.Name('super'),
-                    [ast.Name(self.getClassName()), ast.Name("self")],
+                    [ast.Name(self.getClassName()), ast.Name(self.method_var[-1])],
                 ),
             )
         return node
@@ -2798,7 +2810,7 @@ class JavaAstToPythonAst(object):
             e,
             ast.CallFunc(
                 ast.Name('super'),
-                [ast.Name(self.getClassName()), ast.Name("self")],
+                [ast.Name(self.getClassName()), ast.Name(self.method_var[-1])],
             ),
         )
         return node
@@ -2891,7 +2903,7 @@ class JavaAstToPythonAst(object):
     def visitThis(self, e):
         node = self.fixCallFunc(
             e,
-            ast.Getattr(ast.Name('self'), '__init__'),
+            ast.Getattr(ast.Name(self.method_var[-1]), '__init__'),
         )
         if self.ign_expl_constr:
             return ast.Pass()

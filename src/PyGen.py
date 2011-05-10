@@ -315,6 +315,10 @@ class PyGen(object):
     def astContinue(self, node):
         return "continue"
 
+    def astDecorators(self, node):
+        for n in node.nodes:
+            self.addCode('@%s' % self.dispatch(n))
+
     def astDiscard(self, node):
         self.addCode(self.dispatch(node.expr))
         self.addComment(node)
@@ -369,6 +373,9 @@ class PyGen(object):
         self.addComment(node)
 
     def astFunction(self, node):
+        self.line_spacing([2,1])
+        if node.decorators is not None:
+            self.dispatch(node.decorators)
         args = []
         for a in node.argnames:
             if isinstance(a, basestring):
@@ -390,7 +397,6 @@ class PyGen(object):
             idx -= 1
             args[idx] = "%s=%s" % (args[idx], defaults.pop())
         args = ', '.join(args)
-        self.line_spacing([2,1])
         self.addCode(
             "def %s(%s):" % (
                 node.name,
