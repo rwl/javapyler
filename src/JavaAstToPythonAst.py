@@ -154,9 +154,12 @@ class JavaAstToPythonAst(object):
             None: ('==', False, '__eq__'),
         },
         'get': {
+            'ArrayList': ('[]', False, '__getitem__'),
+            'List': ('[]', False, '__getitem__'),
             'Map': ('[]', False, '__getitem__'),
             'HashMap': ('[]', False, '__getitem__'),
             'Hashtable': ('[]', False, '__getitem__'),
+            'Vector': ('[]', False, '__getitem__'),
         },
         'indexOf': {
             None: ('index', True, 'index'),
