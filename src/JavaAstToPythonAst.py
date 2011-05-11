@@ -145,28 +145,28 @@ class JavaAstToPythonAst(object):
             None: (None, False, None),
         },
         'charAt': {
-            None: ('[]', False, '__getitem__'),
+            None: ('_getitem', False, '__getitem__'),
         },
         'contains': {
-            'HashSet': ('*in*', False, '__contains__'),
-            'Set': ('*in*', False, '__contains__'),
+            'HashSet': ('_in', False, '__contains__'),
+            'Set': ('_in', False, '__contains__'),
         },
         'containsKey': {
-            None: ('*in*', False, '__contains__'),
+            None: ('_in', False, '__contains__'),
         },
         'endsWith': {
             None: ('endswith', True, 'endswith'),
         },
         'equals': {
-            None: ('==', False, '__eq__'),
+            None: ('_eq', False, '__eq__'),
         },
         'get': {
-            'ArrayList': ('[]', False, '__getitem__'),
-            'List': ('[]', False, '__getitem__'),
-            'Map': ('[]', False, '__getitem__'),
-            'HashMap': ('[]', False, '__getitem__'),
-            'Hashtable': ('[]', False, '__getitem__'),
-            'Vector': ('[]', False, '__getitem__'),
+            'ArrayList': ('_getitem', False, '__getitem__'),
+            'List': ('_getitem', False, '__getitem__'),
+            'Map': ('_getitem', False, '__getitem__'),
+            'HashMap': ('_getitem', False, '__getitem__'),
+            'Hashtable': ('_getitem', False, '__getitem__'),
+            'Vector': ('_getitem', False, '__getitem__'),
         },
         'indexOf': {
             None: ('index', True, 'index'),
@@ -188,11 +188,17 @@ class JavaAstToPythonAst(object):
         'length': {
             None: ('len', False, '__len__'),
         },
+        'newInstance': {
+            'Array': ('_Array_newInstance', False, None),
+        },
         'println': {
-            None: (ast.Printnl, False, None),
+            None: ('_println', False, None),
         },
         'readLine': {
             'BufferedReader': ('readline', True, 'readline'),
+        },
+        'set': {
+            'Array': ('_Array_setitem', False, '__setitem__'),
         },
         'size': {
             None: ('len', False, '__len__'),
@@ -201,7 +207,7 @@ class JavaAstToPythonAst(object):
             None: ('startswith', True, 'startswith'),
         },
         'substring': {
-            None: ('[]', False, '__getslice__'),
+            None: ('_getslice', False, '__getslice__'),
         },
         'toArray': {
             None: ('list', False, None),
@@ -358,6 +364,8 @@ class JavaAstToPythonAst(object):
         for t in cu.types:
             nodes.append(self.dispatch(t))
         self.timing['typesTranslation'] = time.time() - t0
+        if self.timing['typesTranslation'] > 20:
+            print srcFile, 'typesTranslation:', self.timing['typesTranslation']
 
         if self.javalib:
             names = []
@@ -524,7 +532,7 @@ class JavaAstToPythonAst(object):
                 if jtype is None:
                     continue
                 return javaType(jtype)
-        return []
+        return [name]
 
     def pushClassName(self, name):
         self.methods.append({})
@@ -1913,57 +1921,28 @@ class JavaAstToPythonAst(object):
         node_ast = ast.CallFunc
         ast_args = []
         method_map = self.method_map[attrname]
+        # Check if the type matches or None in method_map
+        # which means any type
         jtypes = self.guessNodeType(node.expr)
         jtypes.append(None)
         for jt in jtypes:
             if jt in method_map:
                 break
         else:
+            # No match on type. Do nothing.
             return node, arguments, node_ast, ast_args
         name, replace, pymeth = method_map[jt]
         if name is None:
+            # Just remove call of method
             return node.expr, None, node_ast, ast_args
         if replace:
+            # Replace java method name with python method name
             node.attrname = name
             return node, arguments, node_ast, ast_args
-        if name is ast.Printnl:
-            node = ast.Printnl(arguments, None)
-            return node, None, node_ast, ast_args
-        elif name == '[]':
-            if len(arguments) == 1:
-                node_ast = ast.Subscript
-                node = node.expr
-                if pymeth == '__getslice__':
-                    node_ast = ast.Slice
-                    arguments.append(None)
-            elif len(arguments) == 2:
-                node_ast = ast.Slice
-                if isinstance(arguments[0], ast.Const) \
-                   and arguments[0].value == 0:
-                    arguments[0] = None
-                a = arguments[1]
-                if (
-                    isinstance(node.expr, ast.Name)
-                    and isinstance(a, ast.Sub)
-                    and isinstance(a.left, ast.CallFunc)
-                    and isinstance(a.left.node, ast.Name)
-                    and a.left.node.name == 'len'
-                    and len(a.left.args) == 1
-                    and isinstance(a.left.args[0], ast.Name)
-                    and a.left.args[0].name
-                ):
-                    arguments[1] = ast.UnarySub(a.right)
-                node = node.expr
-        elif name == '*in*':
-            assert len(arguments) == 1
-            node_ast = ast.Compare
-            node = node.expr
-            ast_args = ['in']
-        elif name == '==':
-            assert len(arguments) == 1
-            node_ast = ast.Compare
-            node = node.expr
-            ast_args = ['==']
+        m = getattr(self, 'mapMethod%s' % name, None)
+        if m is not None:
+            # Call a specific method for this mapping
+            return m(node, arguments)
         elif name == 'str' and len(arguments) == 1:
             node = ast.Name(name)
         else:
@@ -1977,6 +1956,69 @@ class JavaAstToPythonAst(object):
             else:
                 node = ast.Name(name)
         return node, arguments, node_ast, ast_args
+
+    def mapMethod_getitem(self, node, arguments):
+        assert len(arguments) == 1
+        return node.expr, arguments, ast.Subscript, None
+
+    def mapMethod_setitem(self, node, arguments):
+        if len(arguments) != 2:
+            self.warning(None, 'mapMethod_setitem: %r' % arguments)
+            return node, arguments, ast.CallFunc, None
+        assert len(arguments) == 2
+        n = ast.Assign(
+            [ast.Subscript(node.expr, 'OP_ASSIGN', arguments[:1])],
+            arguments[1],
+        )
+        return n, None, None, None
+
+    def mapMethod_Array_setitem(self, node, arguments):
+        assert len(arguments) == 3
+        n = ast.Assign(
+            [ast.Subscript(arguments[0], 'OP_ASSIGN', arguments[1:2])],
+            arguments[2],
+        )
+        return n, None, None, None
+
+    def mapMethod_getslice(self, node, arguments):
+        if len(arguments) == 1:
+            arguments.append(None)
+        elif len(arguments) == 2:
+            if isinstance(arguments[0], ast.Const) \
+               and arguments[0].value == 0:
+                arguments[0] = None
+            a = arguments[1]
+            if (
+                isinstance(node.expr, ast.Name)
+                and isinstance(a, ast.Sub)
+                and isinstance(a.left, ast.CallFunc)
+                and isinstance(a.left.node, ast.Name)
+                and a.left.node.name == 'len'
+                and len(a.left.args) == 1
+                and isinstance(a.left.args[0], ast.Name)
+                and a.left.args[0].name
+            ):
+                arguments[1] = ast.UnarySub(a.right)
+        else:
+            raise TypeError("Invalid number of arguments: %r" % arguments)
+        return node.expr, arguments, ast.Slice, None
+
+    def mapMethod_in(self, node, arguments):
+        assert len(arguments) == 1
+        return node.expr, arguments, ast.Compare, ['in']
+
+    def mapMethod_eq(self, node, arguments):
+        assert len(arguments) == 1
+        return node.expr, arguments, ast.Compare, ['==']
+
+    def mapMethod_println(self, node, arguments):
+        node = ast.Printnl(arguments, None)
+        return node, None, None, None
+
+    def mapMethod_Array_newInstance(self, node, arguments):
+        assert len(arguments) == 2
+        node = ast.Mul((ast.List([ast.Name('None')]), arguments[1]))
+        return node, None, None, None
 
     def fixCallFunc(self, e, node, arguments=None, scoped=True):
         node_ast = ast.CallFunc
