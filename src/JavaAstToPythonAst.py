@@ -29,7 +29,6 @@ ast.Node.comments = None
 
 file_globals = {}
 file_globals_guess = {}
-collect_globals_time = 0
 fixme = '!FIXME!'
 
 
@@ -116,6 +115,7 @@ class JavaAstToPythonAst(object):
         'Float': ('float', None),
         'HashMap': ('dict', None),
         'Hashtable': ('dict', None),
+        'HashSet': ('set', None),
         'int': ('int', None),
         'Int': ('int', None),
         'Integer': ('int', None),
@@ -123,6 +123,7 @@ class JavaAstToPythonAst(object):
         'Long': ('long', None),
         'Map': ('dict', None),
         'RuntimeException': ('RuntimeError', None),
+        'Set': ('set', None),
         'Short': ('int', None),
         'String': ('str', None),
         'StringBuffer': ('str', None),
@@ -146,8 +147,12 @@ class JavaAstToPythonAst(object):
         'charAt': {
             None: ('[]', False, '__getitem__'),
         },
+        'contains': {
+            'HashSet': ('*in*', False, '__contains__'),
+            'Set': ('*in*', False, '__contains__'),
+        },
         'containsKey': {
-            None: ('has_key', True, 'has_key'),
+            None: ('*in*', False, '__contains__'),
         },
         'endsWith': {
             None: ('endswith', True, 'endswith'),
@@ -276,14 +281,23 @@ class JavaAstToPythonAst(object):
             setattr(self.opts, k, v)
         self.srcFile = srcFile
         self.absSrcFile = os.path.realpath(os.path.abspath(srcFile))
+        self.timing = {}
+        t0 = time.time()
         lexer = JavaLexer(ANTLRFileStream(srcFile))
+        self.timing['lexer'] = time.time() - t0
+        t0 = time.time()
         tokens = CommonTokenStream(lexer)
+        self.timing['tokens'] = time.time() - t0
+        t0 = time.time()
         parser = JavaParser(tokens)
+        self.timing['JavaParser'] = time.time() - t0
+        t0 = time.time()
         cu = parser.compilationUnit()
         tree = cu.getTree()
-        t = tree.getToken()
+        tree.getToken()
         walker = JavaWalker()
         cu = walker.walk(tree, tokens)
+        self.timing['JavaWalker'] = time.time() - t0
 
         if not hasattr(self, 'java_packages'):
             self.java_packages = java_packages
@@ -340,8 +354,10 @@ class JavaAstToPythonAst(object):
         # Need to be set after self.collectGlobals():
         self.class_names = [{}]
 
+        t0 = time.time()
         for t in cu.types:
             nodes.append(self.dispatch(t))
+        self.timing['typesTranslation'] = time.time() - t0
 
         if self.javalib:
             names = []
@@ -384,10 +400,7 @@ class JavaAstToPythonAst(object):
         self.flatten_stmt(stmt, True)
 
     def timings(self):
-        global collect_globals_time
-        return dict(
-            collect_globals_time=collect_globals_time,
-        )
+        return self.timing.copy()
 
     def pushState(self):
         self.state_stack.append(State(
@@ -679,7 +692,6 @@ class JavaAstToPythonAst(object):
         node.doc = self.parseComment(comment)
 
     def collectGlobals(self, cu):
-        global collect_globals_time
         t0 = time.time()
 
         def unresolvable(impname):
@@ -761,7 +773,7 @@ class JavaAstToPythonAst(object):
             else:
                 fpath = "%s.java" % os.path.sep.join(fpath)
             handleFile(fpath, impname)
-        collect_globals_time += time.time() - t0
+        self.timing['collectGlobals'] = time.time() - t0
         return
 
     def mapImport(self, name):
@@ -1899,6 +1911,7 @@ class JavaAstToPythonAst(object):
 
     def mapMethod(self, node, attrname, arguments):
         node_ast = ast.CallFunc
+        ast_args = []
         method_map = self.method_map[attrname]
         jtypes = self.guessNodeType(node.expr)
         jtypes.append(None)
@@ -1906,16 +1919,16 @@ class JavaAstToPythonAst(object):
             if jt in method_map:
                 break
         else:
-            return node, arguments, node_ast
+            return node, arguments, node_ast, ast_args
         name, replace, pymeth = method_map[jt]
         if name is None:
-            return node.expr, None, node_ast
+            return node.expr, None, node_ast, ast_args
         if replace:
             node.attrname = name
-            return node, arguments, node_ast
+            return node, arguments, node_ast, ast_args
         if name is ast.Printnl:
             node = ast.Printnl(arguments, None)
-            return node, None, node_ast
+            return node, None, node_ast, ast_args
         elif name == '[]':
             if len(arguments) == 1:
                 node_ast = ast.Subscript
@@ -1941,10 +1954,16 @@ class JavaAstToPythonAst(object):
                 ):
                     arguments[1] = ast.UnarySub(a.right)
                 node = node.expr
+        elif name == '*in*':
+            assert len(arguments) == 1
+            node_ast = ast.Compare
+            node = node.expr
+            ast_args = ['in']
         elif name == '==':
             assert len(arguments) == 1
             node_ast = ast.Compare
             node = node.expr
+            ast_args = ['==']
         elif name == 'str' and len(arguments) == 1:
             node = ast.Name(name)
         else:
@@ -1954,10 +1973,10 @@ class JavaAstToPythonAst(object):
                     [node.expr],
                 )
                 n.comments = node.comments
-                return n, None, node_ast
+                return n, None, node_ast, ast_args
             else:
                 node = ast.Name(name)
-        return node, arguments, node_ast
+        return node, arguments, node_ast, ast_args
 
     def fixCallFunc(self, e, node, arguments=None, scoped=True):
         node_ast = ast.CallFunc
@@ -1978,7 +1997,7 @@ class JavaAstToPythonAst(object):
             if isinstance(attrname, ast.Name):
                 attrname = attrname.name
             if attrname in self.method_map:
-                node, arguments, node_ast = self.mapMethod(
+                node, arguments, node_ast, ast_args = self.mapMethod(
                     node, attrname, arguments,
                 )
                 if arguments is None:
@@ -2001,11 +2020,12 @@ class JavaAstToPythonAst(object):
         elif node_ast is ast.Slice:
             node = node_ast(node, 'OP_APPLY', args[0], args[1])
         elif node_ast is ast.Compare:
-            op = '=='
+            op = ast_args[0]
             if (
-                len(args) == 1
-                and isinstance(args[0], ast.Const)
-                and args[0].value is None
+                op == '==' and
+                len(args) == 1 and
+                isinstance(args[0], ast.Const) and
+                args[0].value is None
             ):
                 op = 'is'
             node = node_ast(node, [(op, a) for a in args])

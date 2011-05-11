@@ -2,6 +2,7 @@
 
 import sys
 import os
+import time
 # There's no optparse in jython
 #import getopt
 try:
@@ -12,6 +13,8 @@ from ConfigParser import ConfigParser
 
 from JavaAstToPythonAst import JavaAstToPythonAst
 from PyGen import PyGen
+
+timing = {}
 
 
 class JavaPyler(object):
@@ -48,9 +51,11 @@ class JavaPyler(object):
                                 pass
                         setattr(opts, k, v)
         # Now the real stuff
+        t = time.time()
         jp = self.javaAstToPythonAst(src, opts)
-        if opts.timing:
-            print jp.timings()
+        timings = jp.timings()
+        timings['javaAstToPythonAst'] = time.time() - t
+        t = time.time()
         pycode = self.generatePython(jp.module, opts)
         output = opts.output
         if not output:
@@ -71,6 +76,12 @@ class JavaPyler(object):
             dst = "%s.py" % dst[:-5]
         assert src != dst
         self.output(dst, pycode)
+        timings['generatePython'] = time.time() - t
+        for k, v in timings.iteritems():
+            if k in timing:
+                timing[k] += v
+            else:
+                timing[k] = v
 
     def javaAstToPythonAst(self, src, options):
         return JavaAstToPythonAst(src, options)
@@ -124,6 +135,9 @@ def main(parser_class, options, args):
                     parse(parser_class, fpath, None, options)
         else:
             parse(parser_class, arg, None, options)
+    if options.timing:
+        print timing
+
 
 parser = OptionParser()
 parser.add_option(
@@ -134,28 +148,28 @@ parser.add_option(
 parser.add_option(
     '--java-base',
     dest='java_base',
-    help='base java import to be ignored in python imports'
+    help='base java import to be ignored in python imports',
 )
 parser.add_option(
     '--py-base',
     dest='py_base',
-    help='python base import for imports that match the java base'
+    help='python base import for imports that match the java base',
 )
 parser.add_option(
     '--as-module',
     dest='as_module',
-    help='promotes the base class(es) to module level'
+    help='promotes the base class(es) to module level',
 )
 parser.add_option(
     '--output',
     dest='output',
-    help='base directory for generated python files'
+    help='base directory for generated python files',
 )
 parser.add_option(
     '--timing',
     dest='timing',
     action='store_true',
-    help='collect and print timing characteristics'
+    help='collect and print timing characteristics',
 )
 
 parser.add_option(
