@@ -9,7 +9,7 @@ try:
     from optparse import OptionParser
 except ImportError:
     from py2.optparse import OptionParser
-from ConfigParser import ConfigParser
+from ConfigParser import ConfigParser, NoOptionError
 
 from JavaAstToPythonAst import JavaAstToPythonAst
 from PyGen import PyGen
@@ -38,13 +38,10 @@ class JavaPyler(object):
             for section in opts.config.sections():
                 if src.find(section) >= 0:
                     for k in opts.config.options(section):
-                        v = opts.config.get(section, k)
-                        vlower = v.lower()
-                        if vlower == 'true':
-                            v = True
-                        elif vlower == 'false':
-                            v = False
-                        else:
+                        try:
+                            v = opts.config.getboolean(section, k)
+                        except (NoOptionError, ValueError):
+                            v = opts.config.get(section, k)
                             try:
                                 v = int(v)
                             except:
@@ -111,6 +108,10 @@ def handle_config_option(option, opt, value, parser, *args, **kwargs):
     parser.values.config = config
     config.read(value)
     for k, v in config.defaults().iteritems():
+        try:
+            v = config.getboolean('DEFAULT', k)
+        except ValueError:
+            pass
         setattr(parser.values, k, v)
 
 def parse(parser_class, src, dst, options):
@@ -154,6 +155,12 @@ parser.add_option(
     '--py-base',
     dest='py_base',
     help='python base import for imports that match the java base',
+)
+parser.add_option(
+    '--add-get-package',
+    dest='add_get_package',
+    action='store_true',
+    help='add getPackage)() method to classes',
 )
 parser.add_option(
     '--as-module',

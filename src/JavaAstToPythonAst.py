@@ -12,6 +12,7 @@ sys.path.append(os.path.abspath(os.path.join(
 sys.path.append(os.path.abspath(os.path.join(
     base, "javaparser", "javaparser.jar",
 )))
+import ConfigParser
 import re
 from py2 import ast
 import JavaLexer
@@ -110,6 +111,7 @@ class JavaAstToPythonAst(object):
                     ast.Stmt([ast.From('StringIO', [('StringIO', None)], 0)]),
                 )],
                 None)),
+        'Byte': ('int', None),
         'byte': ('int', None),
         'Double': ('float', None),
         'Float': ('float', None),
@@ -843,8 +845,12 @@ class JavaAstToPythonAst(object):
             as_module = False
             for section in self.opts.config.sections():
                 if fpath.find(section) >= 0:
-                    as_module = self.opts.config.get(section, 'as_module').lower()
-                    as_module = as_module == 'true' or as_module == '1' 
+                    try:
+                        as_module = self.opts.config.getboolean(
+                            section, 'as_module',
+                        )
+                    except ConfigParser.NoOptionError, ValueError:
+                        pass
                     break
             names = files[fpath].keys()
             names.sort()
@@ -2267,6 +2273,22 @@ class JavaAstToPythonAst(object):
             stmt,
             e.lineno
         )
+        if self.opts.add_get_package:
+            if self.opts.as_module and self.getClassDepth() == 2:
+                deco = None
+                args = []
+            else:
+                deco = ast.Decorators([ast.Name('classmethod')])
+                args = ['cls']
+            stmt.nodes.append(ast.Function(
+                deco,
+                'getPackage',
+                args,
+                [],
+                0,
+                None,
+                ast.Stmt([ast.Return(ast.Const(self.package_name))]),
+            ))
         for n in e.members:
             try:
                 depth = self.getStackDepth()
