@@ -2219,7 +2219,11 @@ class JavaAstToPythonAst(object):
         return self.stmt(nodes)
 
     def visitCallFunc(self, e):
+        attrib_map = self.attrib_map
+        if isinstance(e.node, jast.QualifiedIdentifier):
+            self.attrib_map = {}
         node = self.dispatch(e.node)
+        self.attrib_map = attrib_map
         return self.fixCallFunc(e, node)
 
     def visitCastExpr(self, e):
