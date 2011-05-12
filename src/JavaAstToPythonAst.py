@@ -2037,7 +2037,7 @@ class JavaAstToPythonAst(object):
 
     def mapMethod_in(self, node, arguments):
         assert len(arguments) == 1
-        return node.expr, arguments, ast.Compare, ['in']
+        return arguments[0], [node.expr], ast.Compare, ['in']
 
     def mapMethod_eq(self, node, arguments):
         assert len(arguments) == 1
