@@ -162,6 +162,9 @@ class JavaAstToPythonAst(object):
         'equals': {
             None: ('_eq', False, '__eq__'),
         },
+        'forName': {
+            'Class': ('_Class_forName', False, None),
+        },
         'get': {
             'ArrayList': ('_getitem', False, '__getitem__'),
             'List': ('_getitem', False, '__getitem__'),
@@ -2051,6 +2054,67 @@ class JavaAstToPythonAst(object):
         assert len(arguments) == 2
         node = ast.Mul((ast.List([ast.Name('None')]), arguments[1]))
         return node, None, None, None
+
+    def mapMethod_Class_forName(self, node, arguments):
+        assert len(arguments) == 1
+        n = ast.CallFunc(
+            ast.Lambda(
+                ['x'],
+                [],
+                0,
+                ast.CallFunc(
+                    ast.Name('getattr'),
+                    [
+                        ast.CallFunc(
+                            ast.Name('__import__'),
+                            [
+                                ast.Subscript(
+                                    ast.CallFunc(
+                                        ast.Getattr(ast.Name('x'), 'rsplit'),
+                                        [ast.Const('.'), ast.Const(1)],
+                                        None,
+                                        None,
+                                    ),
+                                    'OP_APPLY',
+                                    [ast.Const(0)],
+                                ),
+                                ast.Keyword(
+                                    'fromlist',
+                                    ast.Subscript(
+                                        ast.CallFunc(
+                                            ast.Getattr(ast.Name('x'), 'rsplit'),
+                                            [ast.Const('.'), ast.Const(1)],
+                                            None,
+                                            None,
+                                        ),
+                                        'OP_APPLY',
+                                        [ast.Const(0)],
+                                    ),
+                                ),
+                            ],
+                            None,
+                            None,
+                        ),
+                        ast.Subscript(
+                            ast.CallFunc(
+                                ast.Getattr(ast.Name('x'), 'split'),
+                                [ast.Const('.')],
+                                None,
+                                None,
+                            ),
+                            'OP_APPLY',
+                            [ast.UnarySub(ast.Const(1))],
+                        ),
+                    ],
+                    None,
+                    None,
+                ),
+            ),
+            arguments,
+            None,
+            None,
+        )
+        return n, None, None, None
 
     def fixCallFunc(self, e, node, arguments=None, scoped=True):
         node_ast = ast.CallFunc

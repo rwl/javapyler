@@ -490,6 +490,18 @@ class PyGen(object):
     def astInvert(self, node):
         return "~%s" % self.par_expr(node.expr, self.dispatch(node.expr))
 
+    def astKeyword(self, node):
+        return '%s=%s' % (node.name, self.dispatch(node.expr))
+
+    def astLambda(self, node):
+        assert not node.defaults
+        assert not node.flags
+        assert not node.varargs
+        assert not node.kwargs
+        argnames = ', '.join(node.argnames)
+        code = self.dispatch(node.code)
+        return '(lambda %s: %s)' % (argnames, code)
+
     def astLeftShift(self, node):
         left = self.par_expr(node.left, self.dispatch(node.left))
         right = self.par_expr(node.right, self.dispatch(node.right))
