@@ -193,6 +193,9 @@ class JavaAstToPythonAst(object):
         'isArray': {
             None: ('_isArray', False, None),
         },
+        'isEnum': {
+            None: ('_isEnum', False, None),
+        },
         'iterator': {
             None: (None, False, None),
         },
@@ -297,6 +300,8 @@ class JavaAstToPythonAst(object):
         'with',
         'yield',
     ]
+
+    enum_values_name = '_enum_values'
 
     def __init__(self, srcFile, options=None, **kwargs):
         if options is None:
@@ -2153,6 +2158,16 @@ class JavaAstToPythonAst(object):
         )
         return n, None, None, None
 
+    def mapMethod_isEnum(self, node, arguments):
+        assert len(arguments) == 0
+        n = ast.CallFunc(
+            ast.Name('hasattr'),
+            [node.expr, ast.Const(self.enum_values_name)],
+            None,
+            None,
+        )
+        return n, None, None, None
+
     def fixCallFunc(self, e, node, arguments=None, scoped=True):
         node_ast = ast.CallFunc
         if arguments is None:
@@ -2593,7 +2608,7 @@ class JavaAstToPythonAst(object):
             ast.Decorators([ast.Name('classmethod')]),
             'values', ['cls'], [], 0, None,
             ast.Stmt([ast.Return(ast.Slice(
-                ast.Getattr(ast.Name('cls'), '_values'),
+                ast.Getattr(ast.Name('cls'), self.enum_values_name),
                 'OP_APPLY', None, None,
             ))],
         )))
@@ -2603,12 +2618,16 @@ class JavaAstToPythonAst(object):
         if hasConstructor:
             nodes = [class_node]
             nodes.append(ast.Assign(
-                [ast.AssAttr(ast.Name(e.name), '_values', 'OP_ASSIGN')],
+                [ast.AssAttr(
+                    ast.Name(e.name),
+                    self.enum_values_name,
+                    'OP_ASSIGN',
+                )],
                 ast.ListComp(
                     ast.CallFunc(ast.Name(e.name), [], ast.Name('v'), None),
                     [ast.ListCompFor(
                         ast.AssName('v', 'OP_ASSIGN'),
-                        ast.Getattr(ast.Name(e.name), '_values'),
+                        ast.Getattr(ast.Name(e.name), self.enum_values_name),
                         [],
                     )],
                 ),
