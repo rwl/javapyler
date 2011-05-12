@@ -167,6 +167,7 @@ class JavaAstToPythonAst(object):
         },
         'get': {
             'ArrayList': ('_getitem', False, '__getitem__'),
+            'Field': ('_getattr', False, None),
             'List': ('_getitem', False, '__getitem__'),
             'Map': ('_getitem', False, '__getitem__'),
             'HashMap': ('_getitem', False, '__getitem__'),
@@ -174,7 +175,7 @@ class JavaAstToPythonAst(object):
             'Vector': ('_getitem', False, '__getitem__'),
         },
         'getField': {
-            None: ('_getattr', False, '__get__'),
+            None: ('_getField', False, None),
         },
         'indexOf': {
             None: ('index', True, 'index'),
@@ -2022,7 +2023,7 @@ class JavaAstToPythonAst(object):
         assert len(arguments) == 1
         n = ast.CallFunc(
             ast.Name('getattr'),
-            [node.expr, arguments[0]],
+            [arguments[0], node.expr],
             None,
             None,
         )
@@ -2032,7 +2033,7 @@ class JavaAstToPythonAst(object):
         assert len(arguments) == 2
         n = ast.CallFunc(
             ast.Name('setattr'),
-            [arguments[0], ast.Const(fixme), arguments[1]],
+            [arguments[0], node.expr, arguments[1]],
             None,
             None,
         )
@@ -2115,6 +2116,10 @@ class JavaAstToPythonAst(object):
             None,
         )
         return n, None, None, None
+
+    def mapMethod_getField(self, node, arguments):
+        assert len(arguments) == 1
+        return arguments[0], None, None, None
 
     def fixCallFunc(self, e, node, arguments=None, scoped=True):
         node_ast = ast.CallFunc
