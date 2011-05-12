@@ -170,6 +170,9 @@ class JavaAstToPythonAst(object):
             'Hashtable': ('_getitem', False, '__getitem__'),
             'Vector': ('_getitem', False, '__getitem__'),
         },
+        'getField': {
+            None: ('_getattr', False, '__get__'),
+        },
         'indexOf': {
             None: ('index', True, 'index'),
             'String': ('find', True, 'find'),
@@ -201,6 +204,7 @@ class JavaAstToPythonAst(object):
         },
         'set': {
             'Array': ('_Array_setitem', False, '__setitem__'),
+            'Field': ('_Field_setattr', False, '__setitem__'),
         },
         'size': {
             None: ('len', False, '__len__'),
@@ -1969,6 +1973,7 @@ class JavaAstToPythonAst(object):
 
     def mapMethod_setitem(self, node, arguments):
         if len(arguments) != 2:
+            #print 'mapMethod_setitem:', self.guessNodeType(node.expr)
             self.warning(None, 'mapMethod_setitem: %r' % arguments)
             return node, arguments, ast.CallFunc, None
         assert len(arguments) == 2
@@ -2008,6 +2013,27 @@ class JavaAstToPythonAst(object):
         else:
             raise TypeError("Invalid number of arguments: %r" % arguments)
         return node.expr, arguments, ast.Slice, None
+
+    def mapMethod_getattr(self, node, arguments):
+        #print 'mapMethod_getattr:', self.guessNodeType(node.expr)
+        assert len(arguments) == 1
+        n = ast.CallFunc(
+            ast.Name('getattr'),
+            [node.expr, arguments[0]],
+            None,
+            None,
+        )
+        return n, None, None, None
+
+    def mapMethod_Field_setattr(self, node, arguments):
+        assert len(arguments) == 2
+        n = ast.CallFunc(
+            ast.Name('setattr'),
+            [arguments[0], ast.Const(fixme), arguments[1]],
+            None,
+            None,
+        )
+        return n, None, None, None
 
     def mapMethod_in(self, node, arguments):
         assert len(arguments) == 1
