@@ -180,6 +180,9 @@ class JavaAstToPythonAst(object):
         'getField': {
             None: ('_getField', False, None),
         },
+        'getSimpleName': {
+            'Class': ('_Class_getSimpleName', False, None),
+        },
         'indexOf': {
             None: ('index', True, 'index'),
             'String': ('find', True, 'find'),
@@ -2130,6 +2133,11 @@ class JavaAstToPythonAst(object):
     def mapMethod_Class_getComponentType(self, node, arguments):
         assert len(arguments) == 0
         return node.expr, [ast.Const(0)], ast.Subscript, None
+
+    def mapMethod_Class_getSimpleName(self, node, arguments):
+        assert len(arguments) == 0
+        n = ast.Getattr(node.expr, ast.Name('__name__'))
+        return n, None, None, None
 
     def mapMethod_getField(self, node, arguments):
         assert len(arguments) == 1
