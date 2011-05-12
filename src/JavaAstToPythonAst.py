@@ -174,6 +174,9 @@ class JavaAstToPythonAst(object):
             'Hashtable': ('_getitem', False, '__getitem__'),
             'Vector': ('_getitem', False, '__getitem__'),
         },
+        'getComponentType': {
+            'Class': ('_Class_getComponentType', False, None),
+        },
         'getField': {
             None: ('_getField', False, None),
         },
@@ -183,6 +186,9 @@ class JavaAstToPythonAst(object):
         },
         'insert': {
             'StringBuffer': ('%sinsert' % fixme, True, 'insert'),
+        },
+        'isArray': {
+            None: ('_isArray', False, None),
         },
         'iterator': {
             None: (None, False, None),
@@ -198,6 +204,7 @@ class JavaAstToPythonAst(object):
             None: ('len', False, '__len__'),
         },
         'newInstance': {
+            None: ('_newInstance', False, None),
             'Array': ('_Array_newInstance', False, None),
         },
         'println': {
@@ -2051,6 +2058,9 @@ class JavaAstToPythonAst(object):
         node = ast.Printnl(arguments, None)
         return node, None, None, None
 
+    def mapMethod_newInstance(self, node, arguments):
+        return node.expr, arguments, ast.CallFunc, None
+
     def mapMethod_Array_newInstance(self, node, arguments):
         assert len(arguments) == 2
         node = ast.Mul((ast.List([ast.Name('None')]), arguments[1]))
@@ -2117,9 +2127,23 @@ class JavaAstToPythonAst(object):
         )
         return n, None, None, None
 
+    def mapMethod_Class_getComponentType(self, node, arguments):
+        assert len(arguments) == 0
+        return node.expr, [ast.Const(0)], ast.Subscript, None
+
     def mapMethod_getField(self, node, arguments):
         assert len(arguments) == 1
         return arguments[0], None, None, None
+
+    def mapMethod_isArray(self, node, arguments):
+        assert len(arguments) == 0
+        n = ast.CallFunc(
+            ast.Name('isinstance'),
+            [node.expr, ast.Name('list')],
+            None,
+            None,
+        )
+        return n, None, None, None
 
     def fixCallFunc(self, e, node, arguments=None, scoped=True):
         node_ast = ast.CallFunc
