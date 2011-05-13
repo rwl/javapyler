@@ -310,6 +310,8 @@ class PyGen(object):
         return " ".join(state.code)
 
     def astConst(self, node):
+        if isinstance(node.value, basestring):
+            return "'%s'" % str(node.value)
         return repr(node.value)
 
     def astContinue(self, node):
