@@ -97,167 +97,16 @@ class Type(object):
         self.name = name
 
 
-class JavaAstToPythonAst(object):
+from MapMethod import MapMethod
+from MapType import MapType
+from MapAttribute import MapAttribute
+from MapQualifiedName import MapQualifiedName
+
+
+class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
     log_level = 0
-    type_map = {
-        # java type: (py-type, py-import)
-        'ArrayList': ('list', None),
-        'Boolean': ('bool', None),
-        'BufferedReader': ('StringIO', ast.TryExcept(
-                ast.Stmt([ast.From('cStringIO', [('StringIO', None)], 0)]),
-                [(
-                    ast.Name('ImportError'),
-                    ast.AssName('e', 'OP_ASSIGN'),
-                    ast.Stmt([ast.From('StringIO', [('StringIO', None)], 0)]),
-                )],
-                None)),
-        'Byte': ('int', None),
-        'byte': ('int', None),
-        'Double': ('float', None),
-        'Float': ('float', None),
-        'HashMap': ('dict', None),
-        'Hashtable': ('dict', None),
-        'HashSet': ('set', None),
-        'int': ('int', None),
-        'Int': ('int', None),
-        'Integer': ('int', None),
-        'List': ('list', None),
-        'Long': ('long', None),
-        'Map': ('dict', None),
-        'RuntimeException': ('RuntimeError', None),
-        'Set': ('set', None),
-        'Short': ('int', None),
-        'String': ('str', None),
-        'StringBuffer': ('str', None),
-        'Vector': ('list', None),
-    }
-    # toArray -> list()
-    # toString -> str()
-    # length -> len()
-    # size -> len()
-    # charAt -> []
-    # .get -> []
-    # indexOf -> index
-    method_map = {
-        # java-name : {jtype: (python-name, replace, py-method)}
-        'append': {
-            'StringBuffer': ('__add__', True, '__add__'),
-        },
-        'cast': {
-            None: (None, False, None),
-        },
-        'charAt': {
-            None: ('_getitem', False, '__getitem__'),
-        },
-        'contains': {
-            'HashSet': ('_in', False, '__contains__'),
-            'Set': ('_in', False, '__contains__'),
-        },
-        'containsKey': {
-            None: ('_in', False, '__contains__'),
-        },
-        'endsWith': {
-            None: ('endswith', True, 'endswith'),
-        },
-        'equals': {
-            None: ('_eq', False, '__eq__'),
-        },
-        'forName': {
-            'Class': ('_Class_forName', False, None),
-        },
-        'get': {
-            'ArrayList': ('_getitem', False, '__getitem__'),
-            'Field': ('_getattr', False, None),
-            'List': ('_getitem', False, '__getitem__'),
-            'Map': ('_getitem', False, '__getitem__'),
-            'HashMap': ('_getitem', False, '__getitem__'),
-            'Hashtable': ('_getitem', False, '__getitem__'),
-            'Vector': ('_getitem', False, '__getitem__'),
-        },
-        'getComponentType': {
-            'Class': ('_Class_getComponentType', False, None),
-        },
-        'getField': {
-            None: ('_getField', False, None),
-        },
-        'getSimpleName': {
-            'Class': ('_Class_getSimpleName', False, None),
-        },
-        'indexOf': {
-            None: ('index', True, 'index'),
-            'String': ('find', True, 'find'),
-        },
-        'insert': {
-            'StringBuffer': ('%sinsert' % fixme, True, 'insert'),
-        },
-        'isArray': {
-            None: ('_isArray', False, None),
-        },
-        'isEnum': {
-            None: ('_isEnum', False, None),
-        },
-        'iterator': {
-            None: (None, False, None),
-        },
-        'keySet': {
-            None: ('keys', True, 'keys'),
-        },
-        'lastIndexOf': {
-            None: ('rindex', True, 'rindex'),
-            'String': ('rfind', True, 'rfind'),
-        },
-        'length': {
-            None: ('len', False, '__len__'),
-        },
-        'newInstance': {
-            None: ('_newInstance', False, None),
-            'Array': ('_Array_newInstance', False, None),
-        },
-        'println': {
-            None: ('_println', False, None),
-        },
-        'readLine': {
-            'BufferedReader': ('readline', True, 'readline'),
-        },
-        'set': {
-            'Array': ('_Array_setitem', False, '__setitem__'),
-            'Field': ('_Field_setattr', False, '__setitem__'),
-        },
-        'size': {
-            None: ('len', False, '__len__'),
-        },
-        'startsWith': {
-            None: ('startswith', True, 'startswith'),
-        },
-        'substring': {
-            None: ('_getslice', False, '__getslice__'),
-        },
-        'toArray': {
-            None: ('list', False, None),
-        },
-        'toString': {
-            None: ('str', False, '__str__'),
-        },
-    }
-    attrib_map = {
-        'length': {
-            'String': ('len', False, '__len__'),
-            'Vector': ('len', False, '__len__'),
-        }
-    }
-    qualifiedName_map = {
-        'Byte.parseByte': ('int', None),
-        'Float.parseFloat': ('float', None),
-        'Integer.parseInt': ('int', None),
-        'Long.parseLong': ('int', None),
-        'Short.parseShort': ('int', None),
-        'System.in': ('sys.stdin', ast.Import([('sys', None)])),
-        'System.out': ('sys.stdout', ast.Import([('sys', None)])),
-        'System.out.print': ('sys.stdout.write', ast.Import([('sys', None)])),
-        # this is very dirty: 1000 * time.time
-        'System.currentTimeMillis': ('1000 * time.time', ast.Import([('time', None)])),
-    }
     scoped_ignore = [
+        'java',
         'super',
         'System',
         # From qualifiedName_map:
@@ -643,25 +492,6 @@ class JavaAstToPythonAst(object):
                 init,
             )
         return varname, init
-
-    def mapType(self, type_):
-        py = self.type_map.get(type_)
-        if py is None:
-            return type_
-        pytype, pyimport = py
-        if pyimport != None and not pyimport in self.pyimports:
-            self.pyimports.append(pyimport)
-        return pytype
-
-    def mapQualifiedName(self, name):
-        py = self.qualifiedName_map.get(name)
-        if py is None:
-            return name
-        pyname, pyimport = py
-        if pyimport != None and not pyimport in self.pyimports:
-            self.pyimports.append(pyimport)
-        self.block_self_scope = True
-        return pyname
 
     def descend(self):
         self.locals.append({})
@@ -1924,250 +1754,6 @@ class JavaAstToPythonAst(object):
         )
         return (stmt, name)
 
-    def mapAttrib(self, node, attrname=None):
-        if attrname is None:
-            attrname = node.attrname
-        attrib_map = self.attrib_map[attrname]
-        jtypes = self.guessNodeType(node.expr)
-        jtypes.append(None)
-        for jt in jtypes:
-            if jt in attrib_map:
-                break
-        else:
-            return node
-        name, replace, pyname = attrib_map[jt]
-        if replace:
-            node.attrname = name
-            return node
-        n = ast.CallFunc(
-            ast.Name(name),
-            [node.expr]
-        )
-        n.comments = node.comments
-        return n
-
-    def mapMethod(self, node, attrname, arguments):
-        node_ast = ast.CallFunc
-        ast_args = []
-        method_map = self.method_map[attrname]
-        # Check if the type matches or None in method_map
-        # which means any type
-        jtypes = self.guessNodeType(node.expr)
-        jtypes.append(None)
-        for jt in jtypes:
-            if jt in method_map:
-                break
-        else:
-            # No match on type. Do nothing.
-            return node, arguments, node_ast, ast_args
-        name, replace, pymeth = method_map[jt]
-        if name is None:
-            # Just remove call of method
-            return node.expr, None, node_ast, ast_args
-        if replace:
-            # Replace java method name with python method name
-            node.attrname = name
-            return node, arguments, node_ast, ast_args
-        m = getattr(self, 'mapMethod%s' % name, None)
-        if m is not None:
-            # Call a specific method for this mapping
-            return m(node, arguments)
-        elif name == 'str' and len(arguments) == 1:
-            node = ast.Name(name)
-        else:
-            if not arguments:
-                n = ast.CallFunc(
-                    ast.Name(name),
-                    [node.expr],
-                )
-                n.comments = node.comments
-                return n, None, node_ast, ast_args
-            else:
-                node = ast.Name(name)
-        return node, arguments, node_ast, ast_args
-
-    def mapMethod_getitem(self, node, arguments):
-        assert len(arguments) == 1
-        return node.expr, arguments, ast.Subscript, None
-
-    def mapMethod_setitem(self, node, arguments):
-        if len(arguments) != 2:
-            #print 'mapMethod_setitem:', self.guessNodeType(node.expr)
-            self.warning(None, 'mapMethod_setitem: %r' % arguments)
-            return node, arguments, ast.CallFunc, None
-        assert len(arguments) == 2
-        n = ast.Assign(
-            [ast.Subscript(node.expr, 'OP_ASSIGN', arguments[:1])],
-            arguments[1],
-        )
-        return n, None, None, None
-
-    def mapMethod_Array_setitem(self, node, arguments):
-        assert len(arguments) == 3
-        n = ast.Assign(
-            [ast.Subscript(arguments[0], 'OP_ASSIGN', arguments[1:2])],
-            arguments[2],
-        )
-        return n, None, None, None
-
-    def mapMethod_getslice(self, node, arguments):
-        if len(arguments) == 1:
-            arguments.append(None)
-        elif len(arguments) == 2:
-            if isinstance(arguments[0], ast.Const) \
-               and arguments[0].value == 0:
-                arguments[0] = None
-            a = arguments[1]
-            if (
-                isinstance(node.expr, ast.Name)
-                and isinstance(a, ast.Sub)
-                and isinstance(a.left, ast.CallFunc)
-                and isinstance(a.left.node, ast.Name)
-                and a.left.node.name == 'len'
-                and len(a.left.args) == 1
-                and isinstance(a.left.args[0], ast.Name)
-                and a.left.args[0].name
-            ):
-                arguments[1] = ast.UnarySub(a.right)
-        else:
-            raise TypeError("Invalid number of arguments: %r" % arguments)
-        return node.expr, arguments, ast.Slice, None
-
-    def mapMethod_getattr(self, node, arguments):
-        #print 'mapMethod_getattr:', self.guessNodeType(node.expr)
-        assert len(arguments) == 1
-        n = ast.CallFunc(
-            ast.Name('getattr'),
-            [arguments[0], node.expr],
-            None,
-            None,
-        )
-        return n, None, None, None
-
-    def mapMethod_Field_setattr(self, node, arguments):
-        assert len(arguments) == 2
-        n = ast.CallFunc(
-            ast.Name('setattr'),
-            [arguments[0], node.expr, arguments[1]],
-            None,
-            None,
-        )
-        return n, None, None, None
-
-    def mapMethod_in(self, node, arguments):
-        assert len(arguments) == 1
-        return arguments[0], [node.expr], ast.Compare, ['in']
-
-    def mapMethod_eq(self, node, arguments):
-        assert len(arguments) == 1
-        return node.expr, arguments, ast.Compare, ['==']
-
-    def mapMethod_println(self, node, arguments):
-        node = ast.Printnl(arguments, None)
-        return node, None, None, None
-
-    def mapMethod_newInstance(self, node, arguments):
-        return node.expr, arguments, ast.CallFunc, None
-
-    def mapMethod_Array_newInstance(self, node, arguments):
-        assert len(arguments) == 2
-        node = ast.Mul((ast.List([ast.Name('None')]), arguments[1]))
-        return node, None, None, None
-
-    def mapMethod_Class_forName(self, node, arguments):
-        assert len(arguments) == 1
-        n = ast.CallFunc(
-            ast.Lambda(
-                ['x'],
-                [],
-                0,
-                ast.CallFunc(
-                    ast.Name('getattr'),
-                    [
-                        ast.CallFunc(
-                            ast.Name('__import__'),
-                            [
-                                ast.Subscript(
-                                    ast.CallFunc(
-                                        ast.Getattr(ast.Name('x'), 'rsplit'),
-                                        [ast.Const('.'), ast.Const(1)],
-                                        None,
-                                        None,
-                                    ),
-                                    'OP_APPLY',
-                                    [ast.Const(0)],
-                                ),
-                                ast.Keyword(
-                                    'fromlist',
-                                    ast.Subscript(
-                                        ast.CallFunc(
-                                            ast.Getattr(ast.Name('x'), 'rsplit'),
-                                            [ast.Const('.'), ast.Const(1)],
-                                            None,
-                                            None,
-                                        ),
-                                        'OP_APPLY',
-                                        [ast.Const(0)],
-                                    ),
-                                ),
-                            ],
-                            None,
-                            None,
-                        ),
-                        ast.Subscript(
-                            ast.CallFunc(
-                                ast.Getattr(ast.Name('x'), 'split'),
-                                [ast.Const('.')],
-                                None,
-                                None,
-                            ),
-                            'OP_APPLY',
-                            [ast.UnarySub(ast.Const(1))],
-                        ),
-                    ],
-                    None,
-                    None,
-                ),
-            ),
-            arguments,
-            None,
-            None,
-        )
-        return n, None, None, None
-
-    def mapMethod_Class_getComponentType(self, node, arguments):
-        assert len(arguments) == 0
-        return node.expr, [ast.Const(0)], ast.Subscript, None
-
-    def mapMethod_Class_getSimpleName(self, node, arguments):
-        assert len(arguments) == 0
-        n = ast.Getattr(node.expr, ast.Name('__name__'))
-        return n, None, None, None
-
-    def mapMethod_getField(self, node, arguments):
-        assert len(arguments) == 1
-        return arguments[0], None, None, None
-
-    def mapMethod_isArray(self, node, arguments):
-        assert len(arguments) == 0
-        n = ast.CallFunc(
-            ast.Name('isinstance'),
-            [node.expr, ast.Name('list')],
-            None,
-            None,
-        )
-        return n, None, None, None
-
-    def mapMethod_isEnum(self, node, arguments):
-        assert len(arguments) == 0
-        n = ast.CallFunc(
-            ast.Name('hasattr'),
-            [node.expr, ast.Const(self.enum_values_name)],
-            None,
-            None,
-        )
-        return n, None, None, None
-
     def fixCallFunc(self, e, node, arguments=None, scoped=True):
         node_ast = ast.CallFunc
         if arguments is None:
@@ -2503,10 +2089,8 @@ class JavaAstToPythonAst(object):
         if not e.array:
             if isinstance(node, Type):
                 node = ast.Name(node.name)
-            else:
-                node = ast.Getattr(node, '__class__')
         else:
-            node = ast.Getattr(ast.Name('list'), '__class__')
+            node = ast.Name('list')
         return node
 
     def visitConditionalExpr(self, e):
@@ -2646,7 +2230,9 @@ class JavaAstToPythonAst(object):
                 expr = e.nodes[0].body[0]
                 if isinstance(expr, jast.Return):
                     right = self.dispatch(expr.expr)
-            right.comments = ['%s: EnumConstant (line: %s)' % (fixme, e.lineno)]
+            right.comments = ['%s: EnumConstant (line: %s)' % (
+                fixme, e.lineno,
+            )]
         if not e.arguments:
             node = ast.Assign(
                 [ast.AssName(name, 'OP_ASSIGN')],
