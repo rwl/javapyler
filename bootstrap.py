@@ -16,6 +16,8 @@ open(javapyler, 'w').write('''\
 
 BASE="%s"
 JAVAPYLER="%s"
+#export JAVA=/usr/bin/java
+#export JAVA_OPTIONS="-Xms64m"
 
 jython ${JAVAPYLER} $@
 ''' % (
