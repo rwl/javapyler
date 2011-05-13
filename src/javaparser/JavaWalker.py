@@ -219,7 +219,7 @@ class JavaWalker(object):
             i = stop.getTokenStopIndex()
             if i >= 0:
                 end = i
-        while True:
+        while idx < self.tokens.size() - 1:
             idx += 1
             t = self.tokens.get(idx)
             if t.getChannel() != t.HIDDEN_CHANNEL:
