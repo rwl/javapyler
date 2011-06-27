@@ -20,7 +20,7 @@ and run bootstrap.py
 # wget http://www.antlr.org/download/antlr-3.3-complete.jar
 # mv antlr-3.3-complete.jar src/javaparser/
 # apt-get install jython
-# python bootstrap
+# python bootstrap.py
 
 
 
@@ -46,3 +46,19 @@ The contents of src/java/__init__.py should go to the __pyjamas__.py (for d
 esktop) and to the translator __pyjamas__ for pyjs. In the latter case some 
 additional fixes are needed for POST/PRE INC/DEC. However, most ++/-- are 
 converted to straight AugAssign asts (eg. foo += 1).
+
+
+Example usage
+=============
+
+What I've done is:
+
+$ cd javapyler
+$ mkdir gwt
+$ cp ../src/gwtpyler.cfg .
+$ ln -s <source path>/gwt/user/src/com/google/gwt .
+$ mkdir out
+$ ../bin/
+$ ../bin/javapyler
+
+Another location to do this is probably neater
