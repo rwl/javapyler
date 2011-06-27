@@ -59,6 +59,9 @@ $ cp ../src/gwtpyler.cfg .
 $ ln -s <source path>/gwt/user/src/com/google/gwt .
 $ mkdir out
 $ ../bin/
-$ ../bin/javapyler
+$ ../bin/gwtpyler
 
 Another location to do this is probably neater
+
+For some other java project, you could do somethin similar, but invoke
+the ../bin/javapyler in stead of ../bin/gwtpyler.
