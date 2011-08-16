@@ -56,9 +56,8 @@ What I've done is:
 $ cd javapyler
 $ mkdir gwt
 $ cp ../src/gwtpyler.cfg .
-$ ln -s <source path>/gwt/user/src/com/google/gwt .
+$ ln -s <source path>/gwt/user/src/com .
 $ mkdir out
-$ ../bin/
 $ ../bin/gwtpyler
 
 Another location to do this is probably neater
