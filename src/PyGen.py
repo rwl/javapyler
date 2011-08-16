@@ -22,6 +22,7 @@ class PyGen(object):
         self.code = []
         self.state_stack = []
         self.comment_stack = []
+        self.checkComment = False
 
     def getCode(self):
         code = self.code[:]
@@ -39,6 +40,7 @@ class PyGen(object):
         self.state_stack.append(PyGenState(
             code=self.code,
             indent=self.indent,
+            checkComment=self.checkComment,
         ))
         self.code = []
         self.indent = 0
@@ -85,7 +87,7 @@ class PyGen(object):
         return code
 
     def addCode(self, code, newline=True, checkComment=True):
-        if checkComment:
+        if self.checkComment and checkComment:
             self.addComment()
         if code is not None:
             if isinstance(code, basestring):
@@ -249,6 +251,7 @@ class PyGen(object):
     def astCallFunc(self, node):
         indent = self.indent
         self.pushState()
+        self.checkComment = False
         self.addCode(self.dispatch(node.node))
         self.addCode("(", False)
         idx = 0

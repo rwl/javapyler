@@ -2394,6 +2394,10 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
 
     def visitIdentifier(self, e):
         if e.name == 'this':
+            if len(self.method_var) == 0:
+                node = ast.Name('SELF')
+                node.comments = ['%s: Move to __init__' % fixme]
+                return node
             return ast.Name(self.method_var[-1])
         if e.name == 'super':
             self.block_self_scope = True
