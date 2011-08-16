@@ -3,6 +3,7 @@
 import sys
 import os
 import time
+import codecs
 # There's no optparse in jython
 #import getopt
 try:
@@ -96,6 +97,8 @@ class JavaPyler(object):
             if not os.path.isdir(dirname):
                 os.makedirs(dirname)
             fp = open(dst, 'w')
+            fp = codecs.getwriter('UTF-8')(fp)
+            fp.write("# -*- coding: utf-8 -*-\n")
             fp.write(pycode)
             fp.close()
 
