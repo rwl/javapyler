@@ -80,7 +80,16 @@ class PyGen(object):
             return None
         method = "ast%s" % node.__class__.__name__
         if not hasattr(self, method):
-            print 'dispatch:', method, node
+            try:
+                lineno = node.lineno
+            except:
+                lineno = '?'
+            print '%s dispatch: %s, %s, %r' % (
+                self.__class__.__name__, 
+                lineno,
+                method,
+                repr(node),
+            )
         code = getattr(self, method)(node)
         if add_comment:
             self.addComment(node)

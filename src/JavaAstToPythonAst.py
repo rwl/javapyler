@@ -90,6 +90,10 @@ class AnonymousClass(object):
         self.this_suffixes = this_suffixes
         #assert cls_node.nodes > 0
 
+    def __repr__(self):
+        return '<AnonymousClass %r, %s>' % (
+            self.java_node, self.java_node.lineno,
+        )
 
 class Type(object):
 
@@ -898,6 +902,8 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 elif isinstance(n, ast.Pass):
                     addEmpty(nodes, n)
                 else:
+                    if isinstance(n, AnonymousClass):
+                        print 'AnonymousClass in flatten_stmt:', repr(n)
                     n = backmap(n)
                     if isinstance(n, ast.Stmt):
                         n = flatten(n)
@@ -925,7 +931,10 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                     node.nodes += self.dispatch_list(n)
                     self.flatten_stmt(node)
                 elif not isinstance(n, jast.TypeNode):
-                    node.nodes.append(self.dispatch(n))
+                    n = self.dispatch(n)
+                    if isinstance(n, AnonymousClass):
+                        print 'AnonymousClass in stmt:', repr(AnonymousClass)
+                    node.nodes.append(n)
         self.flatten_stmt(node, add_pass)
         return node
 
@@ -2111,6 +2120,24 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         test = self.dispatch(e.test)
         then = self.dispatch(e.then)
         else_ = self.dispatch(e.else_)
+        if isinstance(then, AnonymousClass):
+            cls, name = self.anonClass(then)
+            cls = then.cls_node
+            cls.comments = [
+                '%s AnonymousClass from line %s in conditional expr' % (
+                    fixme, test.lineno,
+                ),
+            ]
+            then = cls
+        if isinstance(else_, AnonymousClass):
+            cls, name = self.anonClass(else_)
+            cls = else_.cls_node
+            cls.comments = [
+                '%s AnonymousClass from line %s in conditional expr' % (
+                    fixme, test.lineno,
+                ),
+            ]
+            else_ = cls
         return ast.IfExp(test, then, else_)
 
     def visitContinue(self, e):
