@@ -2003,11 +2003,9 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             self.dispatch(n)
         state = self.popState()
         self.locals = state.locals
-        if e.extends is None:
-            bases = ['object']
-        else:
+        bases = []
+        if e.extends is not None:
             # Interface can have multiple extends
-            bases = []
             if isinstance(e.extends, list):
                 extends = e.extends
             else:
@@ -2029,6 +2027,8 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                     self.hasGlobal(impl.name)
                     bases.append(impl.name)
                     assert False
+        if not bases:
+            bases = ['object']
         doc = self.parseComment(e.doc)
         stmt = self.stmt([])
         class_node = ast.Class(
