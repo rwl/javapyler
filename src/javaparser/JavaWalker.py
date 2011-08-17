@@ -59,6 +59,8 @@ class JavaWalker(object):
 
 
     def walk(self, tree, tokens=None):
+        self.javadoc_comments = {}
+        self.used_javadocs = {}
         self.stack = []
         children = self.token_children(tree)
         self.comments = []
@@ -68,7 +70,7 @@ class JavaWalker(object):
             for i in range(tokens.size()):
                 t = tokens.get(i)
                 if t.getChannel() == t.HIDDEN_CHANNEL:
-                    if t.getText().startswith("/**"):
+                    if t.getText().strip().startswith("/**"):
                         self.javadocs.append(t)
                     else:
                         self.comments.append(t)
@@ -198,6 +200,9 @@ class JavaWalker(object):
                 break
             text = t.getText()
             if text[:3] == '/**':
+                if t in self.javadoc_comments:
+                    self.javadoc_comments[t][:] = []
+                self.used_javadocs[t] = True
                 return text
         return None
 
@@ -228,20 +233,24 @@ class JavaWalker(object):
                 continue
             if not trailing and idx > end:
                 break
-            if not t in self.comments:
-                continue
             text = t.getText()
-            if text[:3] != '/**':
+            if t in self.comments:
                 comments.append(text)
-            self.comments.remove(t)
+                self.comments.remove(t)
+            elif t in self.javadocs and \
+                 not t in self.javadoc_comments and \
+                 not t in self.used_javadocs:
+                comments.append([text])
+                self.javadoc_comments[t] = comments[-1]
         return comments
 
     def attachComment(self, node, token, start=None, stop=None):
         comments = self.retrieveComment(token, start, stop)
         if comments is not None and len(comments) > 0:
             if node.comments is None:
-                node.comments = []
-            node.comments += comments
+                node.comments = comments
+            else:
+                node.comments += comments
         return node
 
     def addComments(self, node, start_token, end_token=None):

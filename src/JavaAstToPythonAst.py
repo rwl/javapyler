@@ -519,6 +519,10 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
     def parseComment(self, comment):
         if comment is None:
             return None
+        if isinstance(comment, list):
+            if not comment:
+                return None
+            comment = "\n".join(comment)
         if not isinstance(comment, basestring):
             comment = str(comment)
         lines = []
