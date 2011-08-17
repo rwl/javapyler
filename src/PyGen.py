@@ -323,7 +323,12 @@ class PyGen(object):
 
     def astConst(self, node):
         if isinstance(node.value, basestring):
-            return "'%s'" % str(node.value)
+            try:
+                s = node.value.replace("'", "\\'")
+                return "'%s'" % s
+            except:
+                s = "'%s'" % s.encode('utf-8')
+                return s.encode('utf-8')
         return repr(node.value)
 
     def astContinue(self, node):

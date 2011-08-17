@@ -132,11 +132,15 @@ class JavaWalker(object):
             children = self.token_children(token)
         else:
             children = None
-        if hasattr(self, method):
+        try:
+            method = getattr(self, method)
+        except:
+            method = None
+        if method is not None:
             if children is None:
-                node = getattr(self, method)(token)
+                node = method(token)
             else:
-                node = getattr(self, method)(token, children)
+                node = method(token, children)
         else:
             type_ = token.getType()
             if type_ == tok.IDENTIFIER:
