@@ -921,6 +921,9 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             for n in nodes:
                 if isinstance(n, ast.Node):
                     node.nodes.append(n)
+                elif isinstance(n, list):
+                    node.nodes += self.dispatch_list(n)
+                    self.flatten_stmt(node)
                 elif not isinstance(n, jast.TypeNode):
                     node.nodes.append(self.dispatch(n))
         self.flatten_stmt(node, add_pass)
@@ -995,7 +998,10 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 continue
             #if isinstance(v, basestring):
             #    v = ast.Name(v)
-            dst.append(v)
+            if isinstance(v, list):
+                dst += v
+            else:
+                dst.append(v)
         return dst
      
     def scoped(self, name):
@@ -1465,7 +1471,11 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             self.pushState()
             self.analysing += 1
             try:
-                [self.dispatch(b) for b in java_body]
+                for b in java_body:
+                    if isinstance(b, list):
+                        self.dispatch_list(b)
+                    else:
+                        self.dispatch(b)
                 init_args = None
             except AstInitArgs, a:
                 pass
@@ -1650,7 +1660,11 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             try:
                 depth = self.getStackDepth()
                 if body is not None:
-                    [self.dispatch(b) for b in body]
+                    for b in body:
+                        if isinstance(b, list):
+                            self.dispatch_list(b)
+                        else:
+                            self.dispatch(b)
                 self.addMethod(
                     name, 
                     decl_ast=d,
