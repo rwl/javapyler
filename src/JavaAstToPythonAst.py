@@ -927,7 +927,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         if nodes is not None:
             if not isinstance(nodes, list):
                 print nodes
-                print e.lineno
+                raise ValueError("list expected, got %r" % nodes)
             for n in nodes:
                 if isinstance(n, ast.Node):
                     node.nodes.append(n)
@@ -2420,7 +2420,10 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         name = self.addLocal(name, None, e.var[0])
         var = self.dispatch(e.var[1])
         test = self.dispatch(e.test)
-        body = self.stmt(e.nodes)
+        if isinstance(e.nodes, list):
+            body = self.stmt(e.nodes)
+        else:
+            body = self.stmt([e.nodes])
         node = ast.For(
             ast.AssName(
                 name,
