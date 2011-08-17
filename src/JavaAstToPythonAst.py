@@ -1447,7 +1447,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                         return ifnode.else_.nodes
                     assert False
                 nodes = [ifnode]
-            return nodes
+            return self.stmt(nodes).nodes
 
         method_nargs = method['nargs'].keys()
         method_nargs.sort()
@@ -1508,7 +1508,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             nodes = py_body
             #while nodes and isinstance(nodes[0], ast.Pass):
             #    nodes.pop(0)
-            return py_body
+            return self.stmt(py_body).nodes
 
         def getNodes(m):
             params = m['java_args']
@@ -1528,7 +1528,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
 
             # Get python ast for java_body
             nodes += getBodyNodes(parameters, m['java_body'])
-            return nodes
+            return self.stmt(nodes).nodes
 
         def argsDiff(nargs, methlist):
             methlist = methlist[:]
