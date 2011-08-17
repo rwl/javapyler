@@ -1899,7 +1899,13 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 cls = value.nodes[0]
                 value = ast.Name(cls.name)
             else:
-                raise AstError(e, "Statement")
+                self.warning(e.lineno, 'Cannot handle assign expression (too complex)')
+                stmt.comments = [
+                    '%s (line %s): assign expression too complex' % (
+                        fixme, e.lineno,
+                    ),
+                ]
+                return stmt
         augassign = True
         if op == '=':
             op = 'OP_ASSIGN'
@@ -2129,6 +2135,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 ),
             ]
             then = cls
+            self.warning(test.lineno, 'Cannot handle anonymous classes in conditional expressions')
         if isinstance(else_, AnonymousClass):
             cls, name = self.anonClass(else_)
             cls = else_.cls_node
@@ -2138,6 +2145,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 ),
             ]
             else_ = cls
+            self.warning(test.lineno, 'Cannot handle anonymous classes in conditional expressions')
         return ast.IfExp(test, then, else_)
 
     def visitContinue(self, e):
@@ -2436,8 +2444,13 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
     def visitIdentifier(self, e):
         if e.name == 'this':
             if len(self.method_var) == 0:
-                node = ast.Name('SELF')
-                node.comments = ['%s: Move to __init__' % fixme]
+                node = ast.Name('self')
+                node.comments = [
+                    '%s (line %s): Move to __init__' % (
+                        fixme, e.lineno,
+                    ),
+                ]
+                self.warning(e.lineno, "Cannot handle use of 'this' in class definition")
                 return node
             return ast.Name(self.method_var[-1])
         if e.name == 'super':
