@@ -189,6 +189,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         self.globals = {}
         self.globals_ref = {}
         self.class_names = []
+        self.class_locals = []
         self.methods = [{}]
         self.tmpvars = [{}]
         self.method_var = []
@@ -378,6 +379,14 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
     def hasLocal(self, name):
         return name in self.locals[-1]
 
+    def getClassLocal(self, name):
+        depth = self.class_locals[-1] - 1
+        return self.locals[depth].get(name, None)
+        depth = self.getClassDepth()
+        if self.opts.as_module:
+            depth -= 1
+        return self.class_locals[depth-2].get(name, None)
+
     def guessNodeType(self, node):
         def javaType(jtype):
             if isinstance(jtype, jast.Type):
@@ -418,11 +427,15 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         return [name]
 
     def pushClassName(self, name):
+        self.descend()
         self.methods.append({})
+        self.class_locals.append(len(self.locals))
         self.class_names.append(name)
 
     def popClassName(self):
+        self.ascend()
         self.methods.pop()
+        self.class_locals.pop()
         return self.class_names.pop()
 
     def getClassName(self, level=-1):
@@ -1670,7 +1683,13 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             self.method_var.append('cls')
         else:
             self.method_var.append('self')
-        if self.analysing:
+        if not self.analysing:
+            classLocal = self.getClassLocal(name)
+            if classLocal is not None and \
+               classLocal[0] is not None and \
+               not isinstance(classLocal[0], ast.Function):
+                self.warning(d.lineno, "Method and variable name clash '%s'" % name)
+        else:
             ign_expl_constr = self.ign_expl_constr
             self.ign_expl_constr = False
             name = self.addLocal(name, None, d.typeParameters, d.modifiers)
@@ -2095,7 +2114,6 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         analysing = self.analysing
         self.analysing = 1
         name, init = self.getTmpVar(None, 0)
-        self.pushClassName(name)
         cls_type = self.dispatch(e.type)
         assert isinstance(cls_type, Type)
         cls_type = cls_type.name
@@ -2105,6 +2123,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 e,
                 ast.Name(cls_type),
             )
+        self.pushClassName(name)
         body = self.stmt(e.nodes, False)
         self.analysing = 0
         body = self.stmt(e.nodes, False)
