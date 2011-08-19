@@ -469,7 +469,7 @@ class UnaryExpr(Node):
 
 class VariableDeclarator(Node):
 
-    def __init__(self, name, array, initializer):
+    def __init__(self, name, array, initializer, type):
         Node.__init__(self, locals())
 
 

@@ -1429,7 +1429,7 @@ class JavaWalker(object):
                 else:
                     self.unknown_token(c)
         return self.node(
-            token, ast.VariableDeclarator, name, array, initializer,
+            token, ast.VariableDeclarator, name, array, initializer, type_,
         )
 
     def walk_VoidClass(self, token, children):

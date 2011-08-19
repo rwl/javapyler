@@ -198,6 +198,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         self.this_suffixes = []
         self.state_stack = []
         self.label_stack = []
+        self.warnings = {}
         self.comments = []
         self.javadocs = []
         self.javalib = {}
@@ -323,11 +324,11 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             self.javalib[name] -= 1
             assert self.javalib[name] >= 0
 
-    def addGlobal(self, name, pnode, jtype):
+    def addGlobal(self, name, pnode, jtype, modifiers):
         if name in self.reserved_words:
             name = '%s_' % name
         if not name in self.globals:
-            self.globals[name] = [pnode, jtype]
+            self.globals[name] = [pnode, jtype, modifiers]
             if self.getClassDepth() == 1:
                 if not self.absSrcFile in file_globals:
                     file_globals[self.absSrcFile] = {}
@@ -337,6 +338,8 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 self.globals[name][0] = pnode
             if self.globals[name][1] is None:
                 self.globals[name][1] = jtype
+            if self.globals[name][2] is None:
+                self.globals[name][2] = modifiers
         return name
 
     def hasGlobal(self, name):
@@ -348,19 +351,21 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             return True
         return False
 
-    def addLocal(self, name, pnode, jtype):
+    def addLocal(self, name, pnode, jtype, modifiers):
         if name in self.reserved_words:
             name = '%s_' % name
         if self.opts.as_module:
             if self.getClassDepth() <= 2:
-                return self.addGlobal(name, pnode, jtype)
+                return self.addGlobal(name, pnode, jtype, modifiers)
         if not name in self.locals[-1]:
-            self.locals[-1][name] = [pnode, jtype]
+            self.locals[-1][name] = [pnode, jtype, modifiers]
         else:
             if self.locals[-1][name][0] is None:
                 self.locals[-1][name][0] = pnode
             if self.locals[-1][name][1] is None:
                 self.locals[-1][name][1] = jtype
+            if self.locals[-1][name][2] is None:
+                self.locals[-1][name][2] = modifiers
         return name
 
     def getLocal(self, name):
@@ -514,7 +519,10 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
     def warning(self, lineno, *args):
         line = [repr(a) for a in args]
         line = ' '.join(line)
-        sys.stderr.write("%s(%s): %s\n" % (self.srcFile, lineno, line))
+        line = "%s(%s): %s" % (self.srcFile, lineno, line)
+        if not line in self.warnings:
+            self.warnings[line] = True
+            sys.stderr.write("%s\n" % line)
 
     def parseComment(self, comment):
         if comment is None:
@@ -567,7 +575,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
 
         def unresolvable(impname):
             name = impname.split('.')[-1]
-            name = self.addGlobal(name, impname, None)
+            name = self.addGlobal(name, impname, None, None)
             if not impname in file_globals_guess:
                 file_globals_guess[impname] = {}
             file_globals_guess[impname][name] = None
@@ -586,17 +594,17 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                         handleFile(p)
             if fpath in file_globals:
                 for name in file_globals[fpath]:
-                    name = self.addGlobal(name, None, None)
-                    pnode, jtype = file_globals[fpath][name]
-                    name = self.addGlobal(name, None, jtype)
+                    name = self.addGlobal(name, None, None, None)
+                    pnode, jtype, modifiers = file_globals[fpath][name]
+                    name = self.addGlobal(name, None, jtype, None)
                 return
             if fpath in file_globals_guess:
                 for name in file_globals_guess[fpath]:
-                    self.addGlobal(name, fpath, None)
+                    self.addGlobal(name, fpath, None, None)
                 return
             if impname is not None and impname in file_globals_guess:
                 for name in file_globals_guess[impname]:
-                    self.addGlobal(name, impname, None)
+                    self.addGlobal(name, impname, None, None)
                 return
             file_globals_guess[fpath] = {}
             if os.path.isfile(fpath):
@@ -605,7 +613,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 fp.close()
                 for regex in [re_class, re_enum, re_interface]:
                     for r in regex.findall(data):
-                        r = self.addGlobal(r, fpath, None)
+                        r = self.addGlobal(r, fpath, None, None)
                         file_globals_guess[fpath][r] = None
             elif impname is not None:
                 unresolvable(impname)
@@ -627,7 +635,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             wildcard = imp.wildcard
             if wildcard and impname in self.java_packages:
                 for name in self.java_packages[impname]:
-                    self.addGlobal(name, impname, None)
+                    self.addGlobal(name, impname, None, None)
                 continue
             imp = impname.split('.')
             while not imp[0] in src:
@@ -695,7 +703,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                         found = True
                 # Also not found for as_module globals
                 if not found and not self.opts.as_module:
-                   self.warning('Could not resolve import for %s', u)
+                   self.warning(0, 'Could not resolve import for %s', u)
         if self.package_name is None:
             pkg = []
         else:
@@ -1493,7 +1501,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             except AstInitArgs, a:
                 pass
             for p in parameters:
-                p.name = self.addLocal(p.name, p, None)
+                p.name = self.addLocal(p.name, p, None, None)
             state = self.popState()
             # Now for real
             self.locals = state.locals
@@ -1650,7 +1658,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
 
     def methodAppendDoc(self, name, doc):
         if doc is not None:
-            node, jtype = self.getLocal(name)
+            node, jtype, modifiers = self.getLocal(name)
             node.doc = "%s\n---\n%s" % (
                 node.doc,
                 self.parseComment(doc),
@@ -1665,11 +1673,11 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         if self.analysing:
             ign_expl_constr = self.ign_expl_constr
             self.ign_expl_constr = False
-            name = self.addLocal(name, None, d.typeParameters)
+            name = self.addLocal(name, None, d.typeParameters, d.modifiers)
             d.name = name
             self.descend()
             for p in params:
-                p.name = self.addLocal(p.name, None, p.type)
+                p.name = self.addLocal(p.name, None, p.type, None)
             try:
                 depth = self.getStackDepth()
                 if body is not None:
@@ -1710,7 +1718,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             return ast.Pass()
         self.descend()
         for p in params:
-            p.name = self.addLocal(p.name, None, p.type)
+            p.name = self.addLocal(p.name, None, p.type, None)
         method = self.analyseMethodDefs(name)
         self.ascend()
         generic_args = method['props']['generic_args']
@@ -1749,7 +1757,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         )
         method['node'] = node
         node.locals = method['locals']
-        node.name = self.addLocal(name, node, None)
+        node.name = self.addLocal(name, node, None, None)
         self.method_var.pop()
         return node
 
@@ -1993,9 +2001,9 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
     def visitClass(self, e):
         if not self.opts.as_module:
             if self.getClassDepth() == 1:
-                e.name = self.addGlobal(e.name, None, e)
+                e.name = self.addGlobal(e.name, None, e, e.modifiers)
         elif self.getClassDepth() == 2:
-            e.name = self.addGlobal(e.name, None, e)
+            e.name = self.addGlobal(e.name, None, e, e.modifiers)
         self.pushClassName(e.name)
         self.pushState()
         self.analysing += 1
@@ -2198,7 +2206,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
 
     def visitEnum(self, e):
         if self.getClassDepth() == 1:
-            e.name = self.addGlobal(e.name, None, e)
+            e.name = self.addGlobal(e.name, None, e, e.modifiers)
         self.pushClassName(e.name)
         self.pushState()
         self.analysing += 1
@@ -2337,7 +2345,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 )
             nodes.append(a)
             a.nodes[0].name = self.addLocal(
-                a.nodes[0].name, a.nodes[0], e.type,
+                a.nodes[0].name, a.nodes[0], e.type, e.modifiers,
             )
         return self.stmt(nodes)
 
@@ -2417,7 +2425,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
 
     def visitForEach(self, e):
         name = e.var[1].name
-        name = self.addLocal(name, None, e.var[0])
+        name = self.addLocal(name, None, e.var[0], None)
         var = self.dispatch(e.var[1])
         test = self.dispatch(e.test)
         body = self.stmt(e.nodes)
@@ -2541,7 +2549,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         return self.visitClass(e)
 
     def visitLabel(self, e):
-        e.name = self.addLocal(e.name, None, None)
+        e.name = self.addLocal(e.name, None, None, None)
         nodes = []
         nodes.append(ast.Assign(
                 [ast.AssName(e.name, 'OP_ASSIGN')],
@@ -2586,15 +2594,15 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             if isinstance(init, AnonymousClass):
                 raise AstError(e, "AnonymousClass")
             if init is None:
-                name = self.addLocal(name, None, e.type)
+                name = self.addLocal(name, None, e.type, e.modifiers)
             else:
-                name = self.addLocal(name, None, e.type)
+                name = self.addLocal(name, None, e.type, e.modifiers)
                 a = ast.Assign(
                         [ast.AssName(name, 'OP_ASSIGN')],
                         init,
                     )
                 nodes.append(a)
-                name = self.addLocal(name, a.nodes[0], e.type)
+                name = self.addLocal(name, a.nodes[0], e.type, e.modifiers)
         return self.stmt(nodes)
 
     def visitMethod(self, e):
@@ -2826,7 +2834,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 type_ = ast.Name(type_)
             elif isinstance(type_, Type):
                 type_ = ast.Name(type_.name)
-            catch[1].name = self.addLocal(catch[1].name, None, type_)
+            catch[1].name = self.addLocal(catch[1].name, None, type_, None)
             name = self.dispatch(catch[1])
             node = self.stmt(catch[2])
             handlers.append((type_, name, node))
@@ -2857,19 +2865,19 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         name = e.name
         if init is None:
             node = ast.Pass()
-            name = self.addLocal(name, node)
+            name = self.addLocal(name, node, e.type, None)
         else:
             init = self.dispatch(init)
             assert init is not None
             if isinstance(init, AnonymousClass):
                 cls, name = self.anonClass(init, ast.Name(name))
-                name = self.addLocal(name, cls)
+                name = self.addLocal(name, cls, e.type, None)
                 return cls
             node = ast.Assign(
                     [ast.AssName(name, 'OP_ASSIGN')],
                     init,
             )
-            name = self.addLocal(name, node.nodes[0], None)
+            name = self.addLocal(name, node.nodes[0], e.type, None)
         return node
 
     def visitWhile(self, e):
