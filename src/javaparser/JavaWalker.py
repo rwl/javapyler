@@ -762,6 +762,8 @@ class JavaWalker(object):
                 expr = self.dispatch(c)
             elif type_ == tok.Statement:
                 nodes = self.dispatch(c)
+                if not isinstance(nodes, list):
+                    nodes = [nodes]
             elif type_ == tok.ForInit:
                 init = self.dispatch(c)
             elif type_ == tok.ForExpr:

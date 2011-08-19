@@ -2420,10 +2420,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         name = self.addLocal(name, None, e.var[0])
         var = self.dispatch(e.var[1])
         test = self.dispatch(e.test)
-        if isinstance(e.nodes, list):
-            body = self.stmt(e.nodes)
-        else:
-            body = self.stmt([e.nodes])
+        body = self.stmt(e.nodes)
         node = ast.For(
             ast.AssName(
                 name,
