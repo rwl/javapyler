@@ -32,11 +32,6 @@ file_globals = {}
 file_globals_guess = {}
 fixme = '!FIXME!'
 
-PYNAME = 0
-PYNODE = 1
-JTYPE = 2
-MODIFIERS = 3
-
 
 class Variable(object):
 
@@ -46,25 +41,14 @@ class Variable(object):
         self.pyname = pyname
         self.pynode = pynode
         self.jtype = jtype
-        self.modifies = modifiers
+        self.modifiers = modifiers
         self.clashed = clashed
 
     def __str__(self):
-        return str([self.pyname, self.pynode, self.jtype, self.modifies])
+        return str((self.name, self.pyname, self.pynode, self.jtype, self.modifiers))
 
     def __repr__(self):
-        return repr([self.name, self.pyname, self.pynode, self.jtype, self.modifies, self.clashed])
-
-    def __getitem__(self, idx):
-        return [self.pyname, self.pynode, self.jtype, self.modifies][idx]
-
-    def __setitem__(self, idx, value):
-        lst = [self.pyname, self.pynode, self.jtype, self.modifies]
-        lst[idx] = value
-        self.pyname = lst[PYNAME]
-        self.pynode = lst[PYNODE]
-        self.jtype = lst[JTYPE]
-        self.modifies = lst[MODIFIERS]
+        return repr([self.name, self.pyname, self.pynode, self.jtype, self.modifiers, self.clashed])
 
 
 class State(object):
@@ -376,13 +360,13 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                     file_globals[self.absSrcFile] = {}
                 file_globals[self.absSrcFile][name] = self.globals[name]
         else:
-            _pnode, _jtype, _modifiers = self.globals[name][1:4]
-            if _pnode is None:
-                self.globals[name][PYNODE] = pnode
-            if _jtype is None:
-                self.globals[name][JTYPE] = jtype
-            if _modifiers is None:
-                self.globals[name][MODIFIERS] = modifiers
+            variable = self.globals[name]
+            if variable.pynode is None:
+                variable.pynode = pnode
+            if variable.jtype is None:
+                variable.jtype = jtype
+            if variable.modifiers is None:
+                variable.modifiers = modifiers
         return pyname
 
     def getGlobal(self, name):
@@ -431,13 +415,13 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 assert not pyname in self.locals[-1]
                 self.locals[-1][pyname] = self.locals[-1][name]
         else:
-            _pnode, _jtype, _modifiers = self.locals[-1][name][1:4]
-            if _pnode is None:
-                self.locals[-1][name][PYNODE] = pnode
-            if _jtype is None:
-                self.locals[-1][name][JTYPE] = jtype
-            if _modifiers is None:
-                self.locals[-1][name][MODIFIERS] = modifiers
+            variable = self.locals[-1][name]
+            if variable.pynode is None:
+                variable.pynode = pnode
+            if variable.jtype is None:
+                variable.jtype = jtype
+            if variable.modifiers is None:
+                variable.modifiers = modifiers
         return pyname
 
     def getLocal(self, name):
@@ -505,7 +489,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         scopes.reverse()
         for scope in scopes:
             if name in scope:
-                jtype = scope[name][JTYPE]
+                jtype = scope[name].jtype
                 if jtype is None:
                     continue
                 return javaType(jtype)
@@ -696,9 +680,8 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                         handleFile(p)
             if fpath in file_globals:
                 for name in file_globals[fpath]:
-                    name = self.addGlobal(name, None, None, None)
-                    pname, pnode, jtype, modifiers = file_globals[fpath][name]
-                    name = self.addGlobal(name, None, jtype, None)
+                    variable = file_globals[fpath][name]
+                    name = self.addGlobal(name, None, variable.jtype, None)
                 return
             if fpath in file_globals_guess:
                 for name in file_globals_guess[fpath]:
@@ -788,7 +771,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         unresolved.sort()
         files = {}
         for u in unresolved:
-            fpath = self.globals[u][PYNODE]
+            fpath = self.globals[u].pynode
             if isinstance(fpath, basestring):
                 if fpath == self.absSrcFile:
                     continue
@@ -1159,11 +1142,11 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             return pynode(names)
         if self.hasLocal(base_name):
             self.block_self_scope = False
-            names[0] = self.getLocal(base_name)[PYNAME]
+            names[0] = self.getLocal(base_name).pyname
             return pynode(names)
         if self.hasGlobal(base_name):
             self.block_self_scope = False
-            names[0] = self.getGlobal(base_name)[PYNAME]
+            names[0] = self.getGlobal(base_name).pyname
             return pynode(names)
         if self.block_self_scope:
             self.block_self_scope = False
@@ -1177,7 +1160,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             if callable and base_name in self.methods[-1]:
                 names[0] = self.methods[base_name].pyname
             elif self.hasClassLocal(base_name):
-                names[0] = self.getClassLocal(base_name)[PYNAME]
+                names[0] = self.getClassLocal(base_name).pyname
             return pynode([self.method_var[-1]] + names)
         return pynode(names)
 
@@ -1786,7 +1769,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         if not self.analysing:
             classLocal = self.getClassLocal(name)
             if classLocal is not None and \
-               classLocal[PYNAME] == name:
+               classLocal.pyname == name:
                 self.warning(
                     d.lineno,
                     "Method and variable name clash '%s'" % name,
@@ -2787,7 +2770,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         if names[0] == 'this':
             names[0] = self.method_var[-1]
             if self.hasClassLocal(names[1]):
-                names[1] = self.getClassLocal(names[1])[PYNAME]
+                names[1] = self.getClassLocal(names[1]).pyname
         if names[-1] == 'this':
             name = '_%s' % '_'.join(names)
             value = (e.name, name, names)
