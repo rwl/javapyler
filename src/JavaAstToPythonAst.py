@@ -51,6 +51,63 @@ class Variable(object):
         return repr([self.name, self.pyname, self.pynode, self.jtype, self.modifiers, self.clashed])
 
 
+class Method(object):
+
+    def __init__(self, name, pyname):
+        self.name = name
+        self.pyname = pyname
+        # self.decls is a collection of MethodDeclaration instances
+        # the key is the number of arguments (java_args)
+        # the content a list of MethodDeclaration instances
+        # e.g. if there are two definitions of a method
+        # with two arguments/parameters, the dict will be
+        # {2: [MDa, MDb]}
+        self.decls = {}
+        self.base_decl = None
+        self.count = 0
+        self.node = None
+        self.props = None
+        self.locals = None
+        self.assigned_globals = None
+
+    def addDeclaration(self, decl):
+        nargs = len(decl.java_args)
+        if not nargs in self.decls:
+            self.decls[nargs] = []
+        self.decls[nargs].append(decl)
+        self.count += 1
+
+
+class MethodDeclaration(object):
+
+    def __init__(self, method, node=None, decl_ast=None, java_args=None,
+                 java_body=None, java_init=None, defaults=None,
+                 py_init=None, py_body=None, is_this=None):
+        self.method = method
+        self.node = node
+        self.decl_ast = decl_ast
+        # arguments in java definition:
+        self.java_args = [] if java_args is None else java_args
+        # java ast of method body:
+        self.java_body = java_body
+        # None or arguments in this() call
+        self.java_init = java_init
+        self.defaults = defaults
+        self.py_init = py_init
+        self.py_body = py_body
+        self.is_this = None
+        self.args_mismatch = None
+        self.this_inits = None
+        self.swapped_constants = None
+        self.segmented_defaults = None
+        self.parent = None
+        self.childs = []
+
+        nargs = len(self.java_args)
+        if defaults is None:
+            self.defaults = [None] * nargs
+
+
 class State(object):
 
     def __init__(self, **kwargs):
@@ -513,53 +570,27 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
     def getClassDepth(self):
         return len(self.class_names)
 
-    def addMethod(self, name, **kwargs):
+    def addMethod(self, name):
         if name is None:
             raise ValueError('addMethod name is None')
         methods = self.methods[-1]
         if not name in methods:
-            methods[name] = dict(count=0, nargs={})
-        method = methods[name]
-        # java_args : arguments in java definition
-        # java_init : None or arguments in this() call
-        # java_body : java ast of method body
-        # py_init
-        # py_body
-        m = dict(
-            node=None,
-        )
-        m.update(kwargs)
-        decl_ast = kwargs.get('decl_ast')
-        if decl_ast is not None:
-            pyname = self.renameVar(name, m['node'], None, None)
-            method['pyname'] = pyname
-        if m['java_args'] is None:
-            nargs = 0
-            m['java_args'] = []
-        else:
-            nargs = len(m['java_args'])
-        if not nargs in method['nargs']:
-            method['nargs'][nargs] = []
-        method['nargs'][nargs].append(m)
-        method['count'] += 1
-        if not 'defaults' in m:
-            m['defaults'] = [None for i in range(nargs)]
-        if not 'java_init' in m:
-            m['java_init'] = None
-        if not 'py_init' in m:
-            m['py_init'] = None
+            pyname = self.renameVar(name, None, None, None)
+            methods[name] = Method(name, pyname)
+        return methods[name]
 
-    def getMethod(self, name, java_args=False):
+    def getMethod(self, name):#, java_args=False):
+        return self.methods[-1].get(name, None)
         method = self.methods[-1].get(name, None)
         if java_args is False or method is None:
             return method
         if java_args is None or len(java_args) == 0:
-            if len(method['nargs'][0]) == 1:
-                return method['nargs'][0][0]
-            return method['nargs'][0]
+            if len(method.decls[0]) == 1:
+                return method.decls[0][0]
+            return method.decls[0]
         nargs = len(java_args)
-        for m in method['nargs'][nargs]:
-            if m['java_args'] == java_args:
+        for m in method.decls[nargs]:
+            if m.java_args == java_args:
                 return m
         return None
 
@@ -1224,9 +1255,9 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
 
     def analyseMethodDefs(self, name):
         method = self.getMethod(name)
-        #if method['count'] <= 1:
+        #if method.count <= 1:
         #    return method
-        method_nargs = method['nargs'].keys()
+        method_nargs = method.decls.keys()
         method_nargs.sort()
         method_nargs.reverse()
         nothis_methods = []
@@ -1242,7 +1273,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
 
         def setDefaults(idx, defaults):
             defaults = defaults[:]
-            dst = base['defaults']
+            dst = base.defaults
             while defaults:
                 v = defaults.pop(0)
                 if dst[idx] is None:
@@ -1263,43 +1294,36 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             return True
         
         def findParent(child):
-            if not 'childs' in child:
-                child['childs'] = []
-            if 'parent' in child:
-                return child['parent']
-            if child.get('is_this') is None:
-                child['parent'] = None
+            if child.parent:
+                return child.parent
+            if child.is_this is None:
+                child.parent = None
                 return None
-            if child['java_init'] is None:
-                nargs = 0
-            else:
-                nargs = len(child['java_init'])
-            candidates = method['nargs'][nargs]
+            nargs = len(child.java_init)
+            candidates = method.decls[nargs]
             parent = None
             if len(candidates) == 1:
                 parent = candidates[0]
             else:
                 parent = candidates
-            child['parent'] = parent
+            child.parent = parent
             for p in candidates:
-                if not 'childs' in p:
-                    p['childs'] = []
-                p['childs'].append(child)
+                p.childs.append(child)
             return parent
 
-        method_nargs = method['nargs'].keys()
+        method_nargs = method.decls.keys()
         method_nargs.sort()
         minargs = method_nargs[0]
         maxargs = method_nargs[-1]
         method_nargs.reverse()
         for nargs in method_nargs:
             this_inits[nargs] = []
-            methlist = method['nargs'][nargs]
+            methlist = method.decls[nargs]
             for m in methlist:
-                java_args = m['java_args']
-                java_init = m['java_init']
-                py_init = m['py_init']
-                is_this = m.get('is_this')
+                java_args = m.java_args
+                java_init = m.java_init
+                py_init = m.py_init
+                is_this = m.is_this
                 parent = findParent(m)
                 if isinstance(parent, list):
                     generic_args = True
@@ -1308,11 +1332,11 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 if base is None:
                     base = m
                 else:
-                    if not argsMatch(java_args,  base['java_args'], nargs):
+                    if not argsMatch(java_args,  base.java_args, nargs):
                         generic_args = True
                         #print 'generic_args 3'
                         args_mismatch.append(m)
-                        m['args_mismatch'] = True
+                        m.args_mismatch = True
                 if is_this is None:
                     nothis_methods.append(m)
                     continue
@@ -1342,10 +1366,8 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                         setDefaults(0, segments[0])
                     else:
                         # Either names or other initialisations
-                        if not 'this_inits' in m:
-                            m['this_inits'] = []
-                        m['this_inits'] = [i for i in segments[0]]
-                        this_inits[nargs].append(m['this_inits'])
+                        m.this_inits = [i for i in segments[0]]
+                        this_inits[nargs].append(m.this_inits)
                 elif len(segments) == 2:
                     if not isinstance(segments[0][0], ast.Const):
                         # Second half is constants
@@ -1355,13 +1377,13 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                         generic_args = True
                         #print 'generic_args 4'
                         swapped_constants.append(m)
-                        m['swapped_constants'] = segments
+                        m.swapped_constants = segments
                 else:
                     # Segmented defaults
                     generic_args = True
                     #print 'generic_args 5'
                     segmented_defaults.append(m)
-                    m['segmented_defaults'] = segments
+                    m.segmented_defaults = segments
 
         for i in this_inits.itervalues():
             if len(i) > 1:
@@ -1405,14 +1427,14 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         self.tmpvars[-1] = tmpvars
 
         method = self.getMethod(name)
-        method['props'] = props
-        method['locals'] = self.locals[-1]
+        method.props = props
+        method.locals = self.locals[-1]
         return method
 
     def getNormalPyMethod(self, name, method, base, props):
 
         def getBodyNodes(m):
-            java_body = m['java_body']
+            java_body = m.java_body
             if java_body is None:
                 return []
             ign_expl_constr = self.ign_expl_constr
@@ -1424,7 +1446,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         def sortedChilds(childs):
             # Sort childs on number of arguments
             # Least to most arguments
-            childs = [(len(m['java_args']), m) for m in childs]
+            childs = [(len(m.java_args), m) for m in childs]
             childs.sort()
             return [m for n, m in childs]
 
@@ -1434,16 +1456,16 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             have_init = False
             ifnode = ast.If([], None)
             for m in methods:
-                if not m.get('this_inits'):
+                if not m.this_inits:
                     continue
                 have_init = True
                 init_nodes = []
                 idx = -1
-                for src in m['this_inits']:
+                for src in m.this_inits:
                     idx += 1
                     if isinstance(src, ast.Name):
                         continue
-                    dst = base['java_args'][idx]
+                    dst = base.java_args[idx]
                     dst = dst.name
                     if isinstance(src, AnonymousClass):
                         raise AstError(e, "AnonymousClass")
@@ -1453,11 +1475,11 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                             src,
                         ),
                     )
-                nargs = len(m['java_args'])
-                if nargs >= len(base['java_args']):
+                nargs = len(m.java_args)
+                if nargs >= len(base.java_args):
                     ifnode.else_ = self.stmt(init_nodes)
                 else:
-                    arg = base['java_args'][nargs]
+                    arg = base.java_args[nargs]
                     arg = arg.name
                     ifnode.tests.append((
                         ast.Compare(
@@ -1479,8 +1501,8 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 return []
             m = methods[0]
             if len(methods) == 1:
-                parent = m['parent']
-                childs = sortedChilds(m['childs'])
+                parent = m.parent
+                childs = sortedChilds(m.childs)
                 py_body = getChildInits(childs)
                 nodes = [ast.Pass()] + py_body
                 py_body.append(getBodyNodes(m))
@@ -1488,19 +1510,19 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                     nodes = py_body + getNodes(childs)
                 else:
                     ifnode = ast.If([], None)
-                    nargs = len(m['java_args'])
-                    parent_nargs = len(parent['java_args'])
+                    nargs = len(m.java_args)
+                    parent_nargs = len(parent.java_args)
                     cmpop = 'is'
-                    if parent_nargs > len(base['java_args']):
+                    if parent_nargs > len(base.java_args):
                         cmpop = 'is not'
-                        arg = base['java_args'][parent_nargs - 1]
-                        default = base['defaults'][parent_nargs - 1]
+                        arg = base.java_args[parent_nargs - 1]
+                        default = base.defaults[parent_nargs - 1]
                     elif parent_nargs == 0:
-                        arg = base['java_args'][nargs - 1]
-                        default = base['defaults'][nargs - 1]
+                        arg = base.java_args[nargs - 1]
+                        default = base.defaults[nargs - 1]
                     else:
-                        arg = base['java_args'][nargs - 1]
-                        default = base['defaults'][nargs - 1]
+                        arg = base.java_args[nargs - 1]
+                        default = base.defaults[nargs - 1]
                     arg = arg.name
                     if default is not None:
                         py_body = [ast.Assign(
@@ -1515,23 +1537,23 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                         ),
                         stmt,
                     ))
-                    py_body += getNodes(sortedChilds(m['childs']))
+                    py_body += getNodes(sortedChilds(m.childs))
                     self.flatten_stmt(stmt, True),
                     nodes = [ifnode]
             else:
                 ifnode = ast.If([], None)
                 comment_node = ifnode
                 for m in methods:
-                    childs = sortedChilds(m['childs'])
+                    childs = sortedChilds(m.childs)
                     py_body = getChildInits(childs)
                     nodes = [comment_node] + py_body
                     py_body.append(getBodyNodes(m))
-                    nargs = len(m['java_args'])
+                    nargs = len(m.java_args)
                     stmt = self.stmt(py_body)
-                    if nargs >= len(base['java_args']):
+                    if nargs >= len(base.java_args):
                         ifnode.else_ = stmt
                     else:
-                        arg = base['java_args'][nargs]
+                        arg = base.java_args[nargs]
                         arg = arg.name
                         ifnode.tests.append((
                             ast.Compare(
@@ -1553,12 +1575,12 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 nodes = [ifnode]
             return self.stmt(nodes).nodes
 
-        method_nargs = method['nargs'].keys()
+        method_nargs = method.decls.keys()
         method_nargs.sort()
         minargs = method_nargs[0]
         maxargs = method_nargs[-1]
 
-        defaults = [ast.Const(None) for i in base['defaults'] if i is not None]
+        defaults = [ast.Const(None) for i in base.defaults if i is not None]
         #while defaults and defaults[0] is None:
         #    defaults.pop(0)
         # Transform bodies to python
@@ -1567,15 +1589,16 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         nothis_methods = props['nothis_methods']
         nodes = getNodes(nothis_methods)
 
-        n = len(base['java_args']) - len(defaults)
+        n = len(base.java_args) - len(defaults)
         while n > minargs:
             n -= 1
             defaults.insert(0, ast.Const(None))
         node = self.stmt(nodes, True)
-        base['py_body'] = node
-        base['defaults'] = defaults
-        self.setMethod(name)
-        self.addMethod(name, **base)
+        base.py_body = node
+        base.defaults = defaults
+        method.base_decl = base
+        #self.setMethod(name)
+        #self.addMethod(name, **base)
 
     def getGenericPyMethod(self, name, method, base, props):
 
@@ -1615,7 +1638,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             return self.stmt(py_body).nodes
 
         def getNodes(m):
-            params = m['java_args']
+            params = m.java_args
             if params:
                 parameters = self.dispatch_list(params)
             else:
@@ -1631,7 +1654,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 )
 
             # Get python ast for java_body
-            nodes += getBodyNodes(parameters, m['java_body'])
+            nodes += getBodyNodes(parameters, m.java_body)
             return self.stmt(nodes).nodes
 
         def argsDiff(nargs, methlist):
@@ -1639,7 +1662,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             methtypes = []
             for m in methlist:
                 methtypes.append([])
-                for a in m['java_args']:
+                for a in m.java_args:
                     a = self.dispatch(a.type)
                     if hasattr(a, 'name'):
                         a = a.name
@@ -1710,7 +1733,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 ifnode.else_ = None
             return [ifnode]
 
-        method_nargs = method['nargs'].keys()
+        method_nargs = method.decls.keys()
         method_nargs.sort()
         minargs = method_nargs[0]
         maxargs = method_nargs[-1]
@@ -1740,21 +1763,22 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             ]
             argif_node.tests.append(test)
 
-            methlist = method['nargs'][nargs]
+            methlist = method.decls[nargs]
             if len(methlist) == 1:
                 m = methlist[0]
                 test[1].nodes += getNodes(m)
                 continue
             test[1].nodes += argsDiffNodes(nargs, methlist)
         node = self.stmt(nodes, True)
-        base['defaults'] = []
-        base['py_body'] = node
-        self.setMethod(name)
-        self.addMethod(name, **base)
+        base.defaults = []
+        base.py_body = node
+        method.base_decl = base
+        #self.setMethod(name)
+        #self.addMethod(name, **base)
 
     def methodAppendDoc(self, name, doc):
         if doc is not None:
-            node = self.getMethod(name)['node']
+            node = self.getMethod(name).node
             node.doc = "%s\n---\n%s" % (
                 node.doc,
                 self.parseComment(doc),
@@ -1784,6 +1808,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             self.descend()
             for p in params:
                 p.name = self.addLocal(p.name, None, p.type, None)
+            method = self.addMethod(name)
             try:
                 depth = self.getStackDepth()
                 if body is not None:
@@ -1792,24 +1817,42 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                             self.dispatch_list(b)
                         else:
                             self.dispatch(b)
-                self.addMethod(
-                    name, 
+                m = MethodDeclaration(
+                    method,
                     decl_ast=d,
                     java_args=params,
                     java_body=body,
                 )
+                method.addDeclaration(m)
+                #self.addMethod(
+                #    name, 
+                #    decl_ast=d,
+                #    java_args=params,
+                #    java_body=body,
+                #)
             except AstInitArgs, a:
                 self.setStackDepth(depth)
-                self.addMethod(
-                    name,
+                m = MethodDeclaration(
+                    method,
                     decl_ast=d,
                     java_args=params,
                     java_init=a.java_init,
                     py_init=a.py_init,
                     java_body=body,
-                    excpl_constr=a.node,
+                #    excpl_constr=a.node,
                     is_this=a.is_this,
                 )
+                method.addDeclaration(m)
+                #self.addMethod(
+                #    name,
+                #    decl_ast=d,
+                #    java_args=params,
+                #    java_init=a.java_init,
+                #    py_init=a.py_init,
+                #    java_body=body,
+                #    excpl_constr=a.node,
+                #    is_this=a.is_this,
+                #)
             self.ascend()
             self.method_var.pop()
             self.ign_expl_constr = ign_expl_constr
@@ -1819,7 +1862,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         method = self.getMethod(name)
         if method is None:
             raise ValueError('Method is None: %s' % name)
-        if 'props' in method:
+        if method.props:
             self.methodAppendDoc(name, doc)
             return ast.Pass()
         self.descend()
@@ -1827,15 +1870,12 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             p.name = self.addLocal(p.name, None, p.type, None)
         method = self.analyseMethodDefs(name)
         self.ascend()
-        generic_args = method['props']['generic_args']
-        assert len(method['nargs']) == 1
-        for n in method['nargs']:
-            # Should be just one :-)
-            m = method['nargs'][n][0]
-            params = m['java_args']
-            defaults = m['defaults']
-            code = m['py_body']
-            pyname = method['pyname']
+        generic_args = method.props['generic_args']
+        base = method.base_decl
+        params = base.java_args
+        defaults = base.defaults
+        code = base.py_body
+        pyname = method.pyname
         if params:
             parameters = self.dispatch_list(params)
         else:
@@ -1862,8 +1902,8 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             self.parseComment(doc),
             code,
         )
-        method['node'] = node
-        node.locals = method['locals']
+        method.node = node
+        node.locals = method.locals
         node.name = pyname
         #node.name = self.addLocal(name, node, None, None)
         self.method_var.pop()
