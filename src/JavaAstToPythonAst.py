@@ -1978,7 +1978,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 if variable is not None and \
                    variable.clashed and \
                    variable.name in self.methods[-1]:
-                    attrname = self.methods[-1][variable.name]['pyname']
+                    attrname = self.methods[-1][variable.name].pyname
                     node.attrname = attrname
             if attrname in self.method_map:
                 node, arguments, node_ast, ast_args = self.mapMethod(
