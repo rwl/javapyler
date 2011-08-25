@@ -68,7 +68,7 @@ class Method(object):
         self.node = None
         self.props = None
         self.locals = None
-        self.assigned_globals = None
+        self.assigned_globals = {}
 
     def addDeclaration(self, decl):
         nargs = len(decl.java_args)
@@ -273,6 +273,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         self.tmpvars = [{}]
         self.method_var = []
         self.analysing = 0
+        self.assigned_globals = None
         self.ign_expl_constr = False
         self.raise_expl_constr = True
         self.this_suffixes = []
@@ -411,11 +412,14 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         elif name in self.reserved_words:
             pyname = '%s_' % name
         if not name in self.globals:
-            self.globals[name] = Variable(name, pyname, pnode, jtype, modifiers)
+            variable = Variable(name, pyname, pnode, jtype, modifiers)
+            self.globals[name] = variable
             if self.getClassDepth() == 1:
                 if not self.absSrcFile in file_globals:
                     file_globals[self.absSrcFile] = {}
-                file_globals[self.absSrcFile][name] = self.globals[name]
+                file_globals[self.absSrcFile][name] = variable
+            if pyname != name:
+                self.globals[pyname] = variable
         else:
             variable = self.globals[name]
             if variable.pynode is None:
@@ -1865,6 +1869,8 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         if method.props:
             self.methodAppendDoc(name, doc)
             return ast.Pass()
+        save_assigned_globals = self.assigned_globals
+        self.assigned_globals = method.assigned_globals
         self.descend()
         for p in params:
             p.name = self.addLocal(p.name, None, p.type, None)
@@ -1893,6 +1899,9 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             parameters.append(ast.Name('args'))
         elif len(params) > 0 and '...' in params[-1].type_modifier:
             flags = ast.CO_VARARGS
+        if method.assigned_globals:
+            assert isinstance(code, ast.Stmt)
+            code.nodes.insert(0, ast.Global(method.assigned_globals.keys()))
         node = ast.Function(
             decorators,
             pyname,
@@ -1907,6 +1916,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         node.name = pyname
         #node.name = self.addLocal(name, node, None, None)
         self.method_var.pop()
+        self.assigned_globals = save_assigned_globals
         return node
 
     def anonClass(self, ac, dst=None):
@@ -2057,6 +2067,9 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
     def visitAssignExpr(self, e):
         op = e.op
         dst = self.dispatch(e.left)
+        if isinstance(dst, ast.Name) and dst.name in self.globals:
+            if self.assigned_globals is not None:
+                self.assigned_globals[dst.name] = True
         value = self.dispatch(e.right)
         stmt = None
         if isinstance(value, AnonymousClass):

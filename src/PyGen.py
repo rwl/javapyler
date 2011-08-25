@@ -440,6 +440,9 @@ class PyGen(object):
             attrname,
         )
 
+    def astGlobal(self, node):
+        return "global %s" % ", ".join(node.names)
+
     def astIf(self, node):
         ifstr = 'if'
         for test in node.tests:
