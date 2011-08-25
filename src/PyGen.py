@@ -407,11 +407,11 @@ class PyGen(object):
         else:
             defaults = []
         if node.flags & ast.CO_VARKEYWORDS:
-            args[-1] = '**%s' % args[-1]
             idx -= 1
+            args[idx] = '**%s' % args[idx]
         if node.flags & ast.CO_VARARGS:
-            args[-1] = '*%s' % args[-1]
             idx -= 1
+            args[idx] = '*%s' % args[idx]
         while defaults:
             idx -= 1
             args[idx] = "%s=%s" % (args[idx], defaults.pop())

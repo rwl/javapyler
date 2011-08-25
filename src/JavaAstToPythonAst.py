@@ -69,6 +69,7 @@ class Method(object):
         self.props = None
         self.locals = None
         self.assigned_globals = {}
+        self.class_init = None
 
     def addDeclaration(self, decl):
         nargs = len(decl.java_args)
@@ -274,6 +275,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         self.method_var = []
         self.analysing = 0
         self.assigned_globals = None
+        self.class_init = None
         self.ign_expl_constr = False
         self.raise_expl_constr = True
         self.this_suffixes = []
@@ -376,6 +378,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             locals=self.locals,
             analysing=self.analysing,
             tmpvars=self.tmpvars,
+            class_init=self.class_init,
         ))
 
     def popState(self):
@@ -1899,6 +1902,9 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             parameters.append(ast.Name('args'))
         elif len(params) > 0 and '...' in params[-1].type_modifier:
             flags = ast.CO_VARARGS
+        if method.class_init:
+            assert isinstance(code, ast.Stmt)
+            code.nodes = method.class_init + code.nodes
         if method.assigned_globals:
             assert isinstance(code, ast.Stmt)
             code.nodes.insert(0, ast.Global(method.assigned_globals.keys()))
@@ -2176,9 +2182,28 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             e.name = self.addGlobal(e.name, None, e, e.modifiers)
         self.pushClassName(e.name)
         self.pushState()
+        class_init = self.class_init = []
         self.analysing += 1
         for n in e.members:
-            self.dispatch(n)
+            self.append_to_class_init = False
+            node = self.dispatch(n)
+            if self.append_to_class_init:
+                assert isinstance(node, ast.Stmt)
+                assert len(node.nodes) == 1
+                assnode = node.nodes[0]
+                assert isinstance(assnode, ast.Assign)
+                assert len(assnode.nodes) == 1
+                dst = assnode.nodes[0]
+                assert isinstance(dst, ast.AssName)
+                assnode.nodes[0] = ast.AssAttr(
+                    ast.Name('self'),
+                    ast.Name(dst.name),
+                    dst.flags,
+                )
+                if node.comments:
+                    comments = node.comments
+                    node.comments = None
+                self.class_init.append(node)
         state = self.popState()
         self.locals = state.locals
         bases = []
@@ -2232,10 +2257,64 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 None,
                 ast.Stmt([ast.Return(ast.Const(self.package_name))]),
             ))
+        if class_init:
+            method = self.getMethod('__init__')
+            if method is not None:
+                method.class_init = class_init
+                class_init = None
         for n in e.members:
+            if class_init and isinstance(n, jast.Method):
+                # Insert the __init__ method before all
+                # other methods, but after some attibute
+                # definitions (if any)
+                # This method is inserted if there is some 
+                # code to be inserted in the __init__ and
+                # there's no __init__ defined.
+                class_init.append(ast.CallFunc(
+                    ast.Getattr(
+                        ast.CallFunc(
+                            ast.Name('super'),
+                            [
+                                ast.Name(self.getClassName()),
+                                ast.Name('self'),
+                            ],
+                        ),
+                        ast.Name('__init__'),
+                    ),
+                    [ast.Name('self')],
+                    ast.Name('args'),
+                    ast.Name('kwargs'),
+                ))
+                node = ast.Function(
+                    None,
+                    '__init__',
+                    [
+                        ast.Name('self'),
+                        ast.Name('args'),
+                        ast.Name('kwargs'),
+                    ],
+                    [],
+                    ast.CO_VARARGS|ast.CO_VARKEYWORDS,
+                    None,
+                    ast.Stmt(class_init),
+                )
+                stmt.nodes.append(node)
+                class_init = None
             try:
                 depth = self.getStackDepth()
+                self.append_to_class_init = False
                 node = self.dispatch(n)
+                if self.append_to_class_init:
+                    comments = node.comments
+                    if comments:
+                        if len(stmt.nodes) == 0:
+                            stmt.nodes.append(ast.EmptyNode())
+                        node = stmt.nodes[-1]
+                        if not node.comments:
+                            node.comments = comments
+                        else:
+                            node.comments += comments
+                    continue
                 if isinstance(node, list):
                     stmt.nodes += node
                 elif isinstance(node, ast.Pass):
@@ -2625,14 +2704,9 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
 
     def visitIdentifier(self, e):
         if e.name == 'this':
-            if len(self.method_var) == 0:
+            if len(self.locals) == self.class_locals[-1] + 1:
                 node = ast.Name('self')
-                node.comments = [
-                    '%s (line %s): Move to __init__' % (
-                        fixme, e.lineno,
-                    ),
-                ]
-                self.warning(e.lineno, "Cannot handle use of 'this' in class definition")
+                self.append_to_class_init = True
                 return node
             return ast.Name(self.method_var[-1])
         if e.name == 'super':
