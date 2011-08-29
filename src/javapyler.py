@@ -155,6 +155,11 @@ parser.add_option(
     help='base java import to be ignored in python imports',
 )
 parser.add_option(
+    '--java-base-path',
+    dest='java_base_path',
+    help='path that matches java_base',
+)
+parser.add_option(
     '--py-base',
     dest='py_base',
     help='python base import for imports that match the java base',
