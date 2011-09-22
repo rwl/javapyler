@@ -3323,14 +3323,15 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                     cls, name = self.anonClass(init, v)
                     cls = init.cls_node
                     cls.name = v.name
-                    nodes.append(cls)
+                    nodes.insert(0, cls)
                     continue
             if isinstance(init, AnonymousClass):
                 raise AstError(e, "AnonymousClass")
-            if init is None:
-                name = self.addLocal(name, None, e.type, e.modifiers)
-            else:
-                name = self.addLocal(name, None, e.type, e.modifiers)
+            name = self.addLocal(name, None, e.type, e.modifiers)
+            if init is not None:
+                if isinstance(init, ast.Stmt):
+                    nodes += init.nodes
+                    init = nodes.pop()
                 a = ast.Assign(
                     [ast.AssName(name, 'OP_ASSIGN')],
                     init,
