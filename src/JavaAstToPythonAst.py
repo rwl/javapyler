@@ -47,8 +47,12 @@ class Variable(object):
         self.clashed = clashed
         # Used for global variables based on import
         # java statements
-        if imp_name is not None and imp_name.find(os.path.sep) >= 0:
-            raise ValueError('imp_name: %s' % imp_name)
+        if imp_name is None:
+            self.root_class = None
+        else:
+            if imp_name.find(os.path.sep) >= 0:
+                raise ValueError('imp_name: %s' % imp_name)
+            self.root_class = imp_name.split('.')[-1]
         self.imp_name = imp_name
         if imp_path is not None and not imp_path.endswith('.java'):
             raise ValueError('imp_path: %s' % imp_path)
@@ -77,9 +81,46 @@ class Variable(object):
                 self.imp_path = imp_path
 
 
+class Class(object):
+
+    def __init__(self, name, class_stack, depth, methods, locals, node):
+        self.name = name
+        self.class_stack = class_stack[:]
+        self.depth = depth
+        self.methods = methods
+        self.locals = locals
+        self.node = node
+        self.move_to_method = []
+        self.to_method = None
+
+    def __str__(self):
+        return "<Class %s, %d (%d methods, %d locals)>" % (
+            self.name, self.depth, len(self.methods), len(self.locals),
+        )
+
+    def __repr__(self):
+        return self.__str__()
+
+    def initMethod(self, name='__init__'):
+        method = self.methods.get(name)
+        if method is None:
+            method = Method(
+                name,
+                name,
+                self.class_stack + [self],
+            )
+            self.methods[name] = method
+        return method
+
+    def moveToMethod(self, cls, method=None):
+        if method is None:
+            method = cls.initMethod()
+        self.move_to_method.append([cls, method])
+
+
 class Method(object):
 
-    def __init__(self, name, pyname):
+    def __init__(self, name, pyname, class_stack):
         self.name = name
         self.pyname = pyname
         # self.decls is a collection of MethodDeclaration instances
@@ -94,15 +135,35 @@ class Method(object):
         self.node = None
         self.props = None
         self.locals = None
+        self.method_var = 'self'
+        self.static = None
         self.assigned_globals = {}
         self.class_init = None
+        self.class_this = {}
+        self.class_stack = class_stack
 
     def addDeclaration(self, decl):
+        #print 'addDeclaration:', self.name, decl.decl_ast.modifiers
+        if decl.decl_ast.modifiers is not None and \
+           'static' in decl.decl_ast.modifiers:
+            assert self.static is not False
+            self.method_var = 'cls'
+            self.static = True
+        else:
+            self.static = False
         nargs = len(decl.java_args)
         if not nargs in self.decls:
             self.decls[nargs] = []
         self.decls[nargs].append(decl)
         self.count += 1
+
+    def __str__(self):
+        return "<Method %s (%d declarations)>" % (
+            self.name, self.count,
+        )
+
+    def __repr__(self):
+        return self.__str__()
 
 
 class MethodDeclaration(object):
@@ -269,8 +330,11 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             self.opts = options
         for k, v in kwargs.iteritems():
             setattr(self.opts, k, v)
+        if not self.opts.as_module:
+            self.opts.as_module = False
         self.srcFile = srcFile
         self.absSrcFile = os.path.realpath(os.path.abspath(srcFile))
+        self.srcFileBasename = os.path.basename(srcFile)
         path = self.opts.java_base_path
         if path is None:
             path = os.path.dirname(srcFile)
@@ -298,27 +362,31 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         self.locals = [{}]
         self.globals = {}
         self.globals_ref = {}
+        self.track_global_ref = True
+        self.class_to_init = []
         self.class_names = []
         self.class_locals = []
+        self.class_stack = []
         self.methods = [{}]
-        self.tmpvars = [{}]
         self.method_var = []
+        self.method_stack = []
+        self.tmpvars = [{}]
         self.analysing = 0
         self.assigned_globals = None
-        self.class_init = None
         self.ign_expl_constr = False
         self.raise_expl_constr = True
         self.this_suffixes = []
         self.state_stack = []
         self.label_stack = []
+        self.enum_methods = []
         self.warnings = {}
         self.comments = []
         self.javadocs = []
         self.javalib = {}
         self.unresolvable_imports = {}
         self.deep_imports = {}
+        self.type_imports = []
         self.import_assignments = []
-        self.pyimports = []
         self.block_self_scope = False
         self.add_main = None
         for i in range(tokens.size()):
@@ -352,7 +420,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             stmt.nodes.append(self.node(cu, ast.EmptyNode()))
         self.collectGlobals(cu)
         # Need to be set after self.collectGlobals():
-        self.class_names = [{}]
+        self.class_names = []
 
         t0 = time.time()
         for t in cu.types:
@@ -373,9 +441,21 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                     javalib = 'javapyler.java'
                 stmt.nodes.append(ast.From(javalib, names, 0, None))
 
+        import_assignments = []
+        for target, parent, node in self.import_assignments:
+            #if target == 'AnimationHandle':
+            #    print 'srcFile:', self.srcFile
+            #    print 'import_assignment:', target, parent, target in self.globals_ref
+            if target in self.globals_ref:
+                #import_assignments.append(node)
+                self.globals_ref[parent[0]] = 1
         self.createImports(stmt, cu)
-        stmt.nodes += self.pyimports
-        stmt.nodes += self.import_assignments
+        stmt.nodes += self.type_imports
+        import_assignments = []
+        for target, parent, node in self.import_assignments:
+            if target in self.globals_ref:
+                import_assignments.append(node)
+        stmt.nodes += import_assignments
         stmt.nodes += nodes
         if self.add_main is not None:
             if self.opts.as_module:
@@ -411,7 +491,6 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             locals=self.locals,
             analysing=self.analysing,
             tmpvars=self.tmpvars,
-            class_init=self.class_init,
         ))
 
     def popState(self):
@@ -444,16 +523,26 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
     def addGlobal(self, name, pnode=None, jtype=None, modifiers=None, 
                   clashed=None, imp_name=None, imp_path=None):
         pyname = name
+        #print 'addGlobal:', self.srcFileBasename, name, imp_name, imp_path
+        #if name == 'SelectionModel' and imp_path is not None:
+        #    raise ValueError(name)
         if isinstance(modifiers, list) and 'private' in modifiers:
             pyname = '%s%s' % (self.prefix_private_vars, name)
         elif name in self.reserved_words:
             pyname = '%s_' % name
         if not name in self.globals:
+            if imp_name is None and imp_path is None:
+                # Defined in this file
+                imp_path = self.absSrcFile
+                add_to_file_globals = True
+            else:
+                add_to_file_globals = False
             variable = Variable(
-                name, pyname, pnode, jtype, modifiers, clashed, imp_name, imp_path,
+                name, pyname, pnode, jtype, modifiers, clashed, 
+                imp_name, imp_path,
             )
             self.globals[name] = variable
-            if self.getClassDepth() == 1:
+            if add_to_file_globals and self.getClassDepth() == 0:
                 if not self.absSrcFile in file_globals:
                     file_globals[self.absSrcFile] = {}
                 file_globals[self.absSrcFile][name] = variable
@@ -473,11 +562,16 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         return self.globals[name]
 
     def hasGlobal(self, name):
-        if name == 'Resources':
-            print 'hasGlobal:', name
-        if name in self.globals:
-            if self.opts.as_module and self.getClassDepth() == 2:
+        variable = self.globals.get(name)
+        #if name == 'Context':
+        #    print 'hasGlobal:', name, variable, variable.root_class
+        if variable:
+            if self.opts.as_module and self.getClassDepth() == 1:
                 pass
+            if ((variable.root_class is None or 
+                 variable.root_class == name) and 
+                self.track_global_ref):
+                self.globals_ref[name] = 1
             self.globals_ref[name] = 1
             return True
         return False
@@ -485,7 +579,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
     def addLocal(self, name, pnode, jtype, modifiers):
         pyname = self.renameVar(name, pnode, jtype, modifiers)
         if self.opts.as_module:
-            if self.getClassDepth() <= 2 and len(self.locals) <= 3:
+            if self.getClassDepth() <= 1 and len(self.locals) <= 3:
                 return self.addGlobal(name, pnode, jtype, modifiers)
         clashed = False
         if len(self.locals) == self.class_locals[-1] + 1 and \
@@ -533,12 +627,12 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
     def hasLocal(self, name):
         return name in self.locals[-1]
 
-    def getClassLocal(self, name):
-        depth = self.class_locals[-1]
+    def getClassLocal(self, name, depth=-1):
+        depth = self.class_locals[depth]
         return self.locals[depth].get(name, None)
 
-    def hasClassLocal(self, name):
-        depth = self.class_locals[-1]
+    def hasClassLocal(self, name, depth=-1):
+        depth = self.class_locals[depth]
         return name in self.locals[depth]
 
     def renameVar(self, name, pnode, jtype, modifiers):
@@ -563,7 +657,20 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 else:
                     jtypes = javaType(jtype.type)
             elif isinstance(jtype, jast.Class):
-                jtypes = [node.name]
+                if isinstance(node, ast.Name):
+                    jtypes = [node.name]
+                else:
+                    jtypes = None
+                    if isinstance(node, ast.Getattr):
+                        attrname = node.attrname
+                        if isinstance(attrname, basestring):
+                            jtypes = [attrname]
+                        elif isinstance(attrname, ast.Name):
+                            jtypes = [attrname.name]
+                    if jtypes is None:
+                        raise ValueError("Cannot determine java type from %r" % (
+                            node,
+                        ))
                 if jtype.extends:
                     for n in jtype.extends:
                         jtypes += javaType(n)
@@ -594,23 +701,34 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 return javaType(jtype)
         return [name]
 
-    def pushClassName(self, name):
+    def pushClassName(self, name, node):
         self.descend()
         self.methods.append({})
         self.class_locals.append(len(self.locals) - 1)
         self.class_names.append(name)
+        cls = Class(
+            name,
+            self.class_stack,
+            len(self.class_stack) + 1,
+            self.methods[-1],
+            self.locals[-1],
+            node,
+        )
+        self.class_stack.append(cls)
 
     def popClassName(self):
         self.ascend()
         self.methods.pop()
         self.class_locals.pop()
-        return self.class_names.pop()
+        name = self.class_names.pop()
+        cls = self.class_stack.pop()
+        return name
 
     def getClassName(self, level=-1):
         return self.class_names[level]
 
     def getClassDepth(self):
-        return len(self.class_names)
+        return len(self.class_stack)
 
     def addMethod(self, name):
         if name is None:
@@ -618,7 +736,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         methods = self.methods[-1]
         if not name in methods:
             pyname = self.renameVar(name, None, None, None)
-            methods[name] = Method(name, pyname)
+            methods[name] = Method(name, pyname, self.class_stack)
         return methods[name]
 
     def getMethod(self, name):#, java_args=False):
@@ -754,42 +872,78 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                         p = os.path.join(fpath, f)
                         handleFile(
                             os.path.join(fpath, f),
-                            "%s.%s" (impname, f[:-5]),
+                            "%s.%s" % (impname, f[:-5]),
                         )
-            if fpath in file_globals:
-                for name in file_globals[fpath]:
-                    variable = file_globals[fpath][name]
-                    name = self.addGlobal(
-                        name,
-                        jtype=variable.jtype,
-                        imp_name=variable.imp_name, 
-                        imp_path=variable.imp_path,
-                    )
                 return
-            if fpath in file_globals_guess:
-                if not file_globals_guess[fpath]:
-                    unresolvable(impname)
-                else:
-                    for name in file_globals_guess[fpath]:
-                        self.addGlobal(name, imp_name=impname, imp_path=fpath)
-                return
+            assert fpath[-5:] == '.java'
+            splitted_fpath = fpath[:-5].split(os.path.sep)
+            splitted_impname = impname.split('.')
+            assign = []
+            while splitted_fpath:
+                _fpath = "%s.java" % os.path.sep.join(splitted_fpath)
+                if _fpath in file_globals:
+                    for name in file_globals[_fpath]:
+                        variable = file_globals[_fpath][name]
+                        name = self.addGlobal(
+                            name,
+                            jtype=variable.jtype,
+                            imp_name=variable.imp_name, 
+                            imp_path=variable.imp_path,
+                        )
+                    if assign:
+                        self.addDeepImport(
+                            splitted_impname,
+                            splitted_fpath[-1:] + assign,
+                            assign[-1],
+                            _fpath,
+                        )
+                    return
+                if _fpath in file_globals_guess:
+                    if not file_globals_guess[_fpath]:
+                        unresolvable(impname)
+                    else:
+                        for name in file_globals_guess[_fpath]:
+                            self.addGlobal(name, imp_name=impname, imp_path=_fpath)
+                        if assign:
+                            self.addDeepImport(
+                                splitted_impname,
+                                splitted_fpath[-1:] + assign,
+                                assign[-1],
+                                _fpath,
+                            )
+                    return
+                assign.insert(0, splitted_fpath.pop())
             if impname is not None and impname in file_globals_guess:
                 # e.g. impname: junit.framework.TestCase {u'TestCase': None}
                 #      file_globals_guess[impname]: {u'TestCase': None}
                 for name in file_globals_guess[impname]:
                     self.addGlobal(name, imp_name=impname)
                 return
-            file_globals_guess[fpath] = {}
             if os.path.isfile(fpath):
+                file_globals_guess[fpath] = {}
                 fp = open(fpath, 'r')
                 data = fp.read()
                 fp.close()
-                for regex in [re_class, re_enum, re_interface]:
+                splitted_impname = impname.split('.')
+                #for regex in [re_class, re_enum, re_interface]:
+                for regex in [re_any]:
                     for r in regex.findall(data):
                         name = r[-1]
+                        indent = r[0].replace('\n', '')
                         if name:
-                            pyname = self.addGlobal(name, imp_name=impname, imp_path=fpath)
+                            if indent:
+                                pyname = self.addDeepImport(
+                                    splitted_impname,
+                                    [splitted_impname[-1], name],
+                                    name,
+                                    fpath,
+                                )
+                            else:
+                                pyname = self.addGlobal(name, imp_name=impname, imp_path=fpath)
                             file_globals_guess[fpath][pyname] = None
+            elif os.path.isdir(fpath):
+                pass
+                raise NotImplementedError()
             elif impname is not None:
                 splitted_fpath = fpath.split(os.path.sep)
                 splitted_impname = impname.split('.')
@@ -802,7 +956,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                     if fpath in file_globals:
                         pass
                     elif os.path.isfile(fpath):
-                        handleFile(fpath, impname)
+                        handleFile(fpath, '.'.join(splitted_impname))
                     else:
                         continue
                     name.insert(0, splitted_impname.pop())
@@ -818,21 +972,31 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         base = '.'.join(base)
         if self.opts.java_base is not None:
             base = "%s%s" % (self.opts.java_base, base)
-        templ = '(((abstract)|(public)).*)?\s+%s\s+(\w+).*'
-        re_class = re.compile(templ % 'class')
-        re_enum = re.compile(templ % 'enum')
-        re_interface = re.compile(templ % 'interface')
+        templ = '(\s*)(((abstract)|(public)).*)?\s+%s\s+(\w+).*'
+        templ = '^(\s*).*?\s+%s\s+(\w+).*?{'
+        templ = '^(\s*)(((public)|(abstract)|(static)|(final))\s+)*%s\s+(\w+).*?{'
+        re_class = re.compile(templ % 'class', re.M|re.S)
+        re_enum = re.compile(templ % 'enum', re.M|re.S)
+        re_interface = re.compile(templ % 'interface', re.M|re.S)
+        templ = '^(\s*)(((public)|(abstract)|(static)|(final))\s+)*((class)|(interface)|(enum))\s+(\w+).*?{'
+        re_any = re.compile(templ, re.M|re.S)
         for f in os.listdir(dirname):
             if f.endswith('.java'):
                 fpath = os.path.join(dirname, f)
                 impname = "%s.%s" % (base, f[:-5])
                 handleFile(fpath, impname)
         imports = []
+        if self.package_name:
+            imports.append(self.package_name)
         if cu.imports:
-            imports = [i for i in cu.imports]
+            imports += [i for i in cu.imports]
         for imp in imports:
-            impname = imp.name
-            wildcard = imp.wildcard
+            if isinstance(imp, basestring):
+                impname = imp
+                wildcard = True
+            else:
+                impname = imp.name
+                wildcard = imp.wildcard
             if wildcard and impname in self.java_packages:
                 for name in self.java_packages[impname]:
                     self.addGlobal(name, imp_name=impname)
@@ -848,7 +1012,6 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             fpath = src[:src.index(imp[0])] + imp
             if wildcard:
                 fpath = os.path.sep.join(fpath)
-                impname = '%s.*' % impname
             else:
                 fpath = "%s.java" % os.path.sep.join(fpath)
             handleFile(fpath, impname)
@@ -856,13 +1019,17 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         return
 
     def addDeepImport(self, impname, name, target, fpath=None):
+        #if target == 'Coordinates':
+        #    print 'srcFile:', self.srcFile
+        #    print 'addDeepImport:', impname, name, target
         if isinstance(impname, basestring):
             impname = impname.split('.')
         if isinstance(name, basestring):
             name = name.split('.')
         if target in self.deep_imports:
-            return
-        self.deep_imports[target] = (impname, name, target)
+            return self.deep_imports[target][3]
+        pyname = self.addGlobal(target, imp_name='.'.join(impname), imp_path=fpath)
+        self.deep_imports[target] = (impname, name[:], target, pyname)
         src = ast.Name(name[-1])
         name.pop()
         while name:
@@ -871,24 +1038,31 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 src,
             )
         node = ast.Assign(
-            [ast.AssName(target, 'OP_ASSIGN')],
+            [ast.AssName(pyname, 'OP_ASSIGN')],
             src,
         )
-        self.import_assignments.append(node)
-        self.addGlobal(target, imp_name='.'.join(impname), imp_path=fpath)
+        self.import_assignments.append((pyname, self.deep_imports[target][1], node))
+        return pyname
 
     def mapImport(self, name):
         base = self.opts.java_base
         if base:
-            if name.startswith(base):
-                name = name[len(base):]
+            if name.startswith(base + '.'):
+                name = name[len(base) + 1:]
                 if name[0] == '.':
                     name = name[1:]
                 if self.opts.py_base:
                     name = "%s.%s" % (self.opts.py_base, name)
         return name
 
-    def addImport(self, node, name, names, as_module):
+    def addTypeImport(self, name):
+        name = self.mapImport(name)
+        self.type_imports.append(
+            ast.Import([name]),
+        )
+        return name
+
+    def addImportFrom(self, node, name, names, as_module):
         if as_module:
             names = name.split('.')
             name = '.'.join(names[:-1])
@@ -908,6 +1082,8 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         unresolved.sort()
         files = {}
         for u in unresolved:
+            if not u in self.globals:
+                print self.globals.keys()
             fpath = self.globals[u].imp_path
             impname = self.globals[u].imp_name
             if fpath is None:
@@ -955,17 +1131,17 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             if name[-len(pkg)-1:-1] == pkg:
                 name = '.'.join(name[-len(pkg)-1:])
                 name = name[:-5]
-                self.addImport(node, name, names, as_module)
+                self.addImportFrom(node, name, names, as_module)
             else:
                 name[-1] = name[-1][:-5]
                 parent_name = '.'.join(name[:-1])
                 impname = '.'.join(name)
                 for imp in cu.imports:
                     if impname.endswith(imp.name):
-                        self.addImport(node, imp.name, names, as_module)
+                        self.addImportFrom(node, imp.name, names, as_module)
                     elif imp.wildcard and parent_name.endswith(imp.name):
                         impname = '%s.%s' % (imp.name, name[-1])
-                        self.addImport(node, impname, names, as_module)
+                        self.addImportFrom(node, impname, names, as_module)
         comments = []
         importnames = self.unresolvable_imports.keys()
         importnames.sort()
@@ -1208,10 +1384,10 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             node = ast.If([(node, stmt)], None)
         nodes.append(node)
 
-    def dispatch(self, v):
+    def dispatch(self, v, **kwargs):
         method = v.__class__.__name__.split('.')[-1]
         method = 'visit%s' % method
-        node = getattr(self, method)(v)
+        node = getattr(self, method)(v, **kwargs)
         if not self.analysing:
             if isinstance(node, AnonymousClass):
                 self.anon_count = getattr(self, 'anon_count', 0)
@@ -1253,7 +1429,15 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 dst.append(v)
         return dst
      
-    def scoped(self, name, callable=False, as_string=False):
+    def scoped(self, name, test_globals=False, callable=False, as_string=False):
+        debug = 0
+        debug_on = []
+        #debug_on = ['Coordinates']
+        for d in debug_on:
+            if name.find(d) >= 0:
+                debug = 1
+                break
+        #if debug: raise ValueError(name)
         if name == 'sys.stdin' and not self.block_self_scope:
             raise ValueError('stdin')
         def pynode(names):
@@ -1292,20 +1476,85 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         if self.block_self_scope:
             self.block_self_scope = False
             return pynode(names)
-        if len(self.method_var) > 0:
-            if callable and base_name in self.methods[-1]:
-                names[0] = self.methods[-1][base_name].pyname
-            elif self.hasClassLocal(base_name):
-                names[0] = self.getClassLocal(base_name).pyname
-            elif self.hasGlobal(base_name):
-                self.block_self_scope = False
-                names[0] = self.getGlobal(base_name).pyname
+        depth = self.getClassDepth()
+        max_depth = depth - 1
+        if debug: print base_name, 'max_depth:', max_depth, 'callable:', callable
+        while depth:
+            depth -= 1
+            cls = self.class_stack[depth]
+            if debug: print base_name, 'cls:', cls
+            if callable:
+                if base_name in cls.methods:
+                    method = cls.methods[base_name]
+                    names[0] = method.pyname
+                    if depth == max_depth:
+                        if self.method_stack:
+                            names = [self.method_stack[-1].method_var] + names
+                    else:
+                        name_base = cls.name + '_this'
+                        names = [name_base] + names
+                        method.class_this[name_base] = [
+                            method.method_var,
+                            name_base + '_BOO',
+                        ]
+                    return pynode(names)
+            if base_name in cls.locals:
+                if debug: print base_name, 'in cls.locals:', base_name in cls.locals
+                if depth != max_depth:
+                    self.class_stack[depth + 1].to_method = True
+                localvar = cls.locals[base_name]
+                names[0] = localvar.pyname
+                method = None
+                for method in reversed(self.method_stack):
+                    if debug: print 'base_name:', base_name, cls, method.class_stack, self.class_stack
+                    if method.class_stack[-1] is cls:
+                        if debug: print base_name, 'is cls:', cls
+                        break
+                    method = None
+                if debug: print 'method:', method
+                if method is None:
+                    name_base = cls.name + '_this'
+                    self.class_stack[depth + 1].moveToMethod(
+                        cls, cls.initMethod(),
+                    )
+                    names = [name_base] + names
+                else:
+                    if depth == max_depth:
+                        names = [method.method_var] + names
+                    elif False and (localvar.modifiers is not None and
+                        'static' in localvar.modifiers):
+                        if debug: print base_name, 'static'
+                        names = [c.name 
+                                 for c in self.class_stack[:depth + 1]
+                                ] + names
+                    else:
+                        name_base = cls.name + '_this'
+                        names = [name_base] + names
+                        method.class_this[name_base] = [
+                            method.method_var,
+                            name_base + "BAA",
+                        ]
                 return pynode(names)
-            return pynode([self.method_var[-1]] + names)
-        if self.hasGlobal(base_name):
+
+        if (True or test_globals) and self.hasGlobal(base_name):
+            if debug: print base_name, 'hasGlobal'
             self.block_self_scope = False
             names[0] = self.getGlobal(base_name).pyname
             return pynode(names)
+        if True or max_depth <= 1:
+            if debug: print base_name, 'method_stack:', self.method_stack
+            if self.method_stack:
+                method = self.method_stack[-1]
+                names = [method.method_var] + names
+            elif len(names) > 1:
+                pass
+            else:
+                base = 'SELF'
+                if len(self.class_stack) > 0:
+                    cls = self.class_stack[-1]
+                    if len(cls.node.bases) == 1:
+                        base = cls.node.bases[0]
+                names = [base] + names
         return pynode(names)
 
     def node(self, java_node, py_node):
@@ -1710,8 +1959,6 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         base.py_body = node
         base.defaults = defaults
         method.base_decl = base
-        #self.setMethod(name)
-        #self.addMethod(name, **base)
 
     def getGenericPyMethod(self, name, method, base, props):
 
@@ -1756,7 +2003,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 parameters = self.dispatch_list(params)
             else:
                 parameters = []
-            if not self.opts.as_module or self.getClassDepth() > 2:
+            if not self.opts.as_module or self.getClassDepth() > 1:
                 parameters.insert(0, ast.Name(self.method_var[-1]))
 
             nodes = []
@@ -1771,6 +2018,8 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             return self.stmt(nodes).nodes
 
         def argsDiff(nargs, methlist):
+            save_track_global_ref = self.track_global_ref
+            self.track_global_ref = False
             methlist = methlist[:]
             methtypes = []
             for m in methlist:
@@ -1783,6 +2032,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                     methtypes[-1].append(t)
                 methtypes[-1].append(m)
             methtypes.sort()
+            self.track_global_ref = save_track_global_ref
             start = -1
             while start < nargs:
                 start += 1
@@ -1827,6 +2077,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             nodes = argsDiffNodes(nargs, diffs[types[-1]])
             ifnode = ast.If([], self.stmt(nodes))
             for t in types[:-1]:
+                self.scoped(t, test_globals=True)
                 methlist = diffs[t]
                 nodes = argsDiffNodes(nargs, methlist)
                 arg = ast.Subscript(
@@ -1886,8 +2137,6 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         base.defaults = []
         base.py_body = node
         method.base_decl = base
-        #self.setMethod(name)
-        #self.addMethod(name, **base)
 
     def methodAppendDoc(self, name, doc):
         if doc is not None:
@@ -1914,7 +2163,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         else:
             ign_expl_constr = self.ign_expl_constr
             self.ign_expl_constr = False
-            if self.opts.as_module and self.getClassDepth() <= 2:
+            if self.opts.as_module and self.getClassDepth() <= 1:
                 self.addGlobal(name)
             #name = self.addLocal(name, None, d.typeParameters, d.modifiers)
             d.name = name
@@ -1922,6 +2171,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             for p in params:
                 p.name = self.addLocal(p.name, None, p.type, None)
             method = self.addMethod(name)
+            self.method_stack.append(method)
             try:
                 depth = self.getStackDepth()
                 if body is not None:
@@ -1966,7 +2216,11 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 #    excpl_constr=a.node,
                 #    is_this=a.is_this,
                 #)
+            except:
+                print 'method exception'
+                raise
             self.ascend()
+            self.method_stack.pop()
             self.method_var.pop()
             self.ign_expl_constr = ign_expl_constr
             return ast.Pass()
@@ -1977,7 +2231,9 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             raise ValueError('Method is None: %s' % name)
         if method.props:
             self.methodAppendDoc(name, doc)
+            self.method_var.pop()
             return ast.Pass()
+        self.method_stack.append(method)
         save_assigned_globals = self.assigned_globals
         self.assigned_globals = method.assigned_globals
         self.descend()
@@ -1995,9 +2251,9 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             parameters = self.dispatch_list(params)
         else:
             parameters = []
-        if name == 'main' and self.getClassDepth() <= 2:
+        if name == 'main' and self.getClassDepth() <= 1:
             self.add_main = self.class_names[-1]
-        if not self.opts.as_module or self.getClassDepth() > 2:
+        if not self.opts.as_module or self.getClassDepth() > 1:
             parameters.insert(0, ast.Name(self.method_var[-1]))
             if 'static' in d.modifiers:
                 decorators = ast.Decorators([ast.Name('classmethod')])
@@ -2010,7 +2266,17 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             flags = ast.CO_VARARGS
         if method.class_init:
             assert isinstance(code, ast.Stmt)
-            code.nodes = method.class_init + code.nodes
+            if isinstance(method.class_init[0], ast.Stmt) and \
+               len(method.class_init[0].nodes) == 0:
+                del(method.class_init[0])
+            if method.class_init:
+                code.nodes = method.class_init + code.nodes
+        #if method.class_this:
+        #    for src, dst in method.class_this.values():
+        #        code.nodes.insert(0, ast.Assign(
+        #            [ast.AssName(dst, 'OP_ASSIGN')],
+        #            ast.Name(src),
+        #        ))
         if method.assigned_globals:
             assert isinstance(code, ast.Stmt)
             code.nodes.insert(0, ast.Global(method.assigned_globals.keys()))
@@ -2027,17 +2293,20 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         node.locals = method.locals
         node.name = pyname
         #node.name = self.addLocal(name, node, None, None)
+        self.method_stack.pop()
         self.method_var.pop()
         self.assigned_globals = save_assigned_globals
         return node
 
     def anonClass(self, ac, dst=None):
+        cls = ac.cls_node
+        cls.name = ac.cls_node.name
         if dst is None:
             anonvar = ac.cls_node.name
+        elif isinstance(dst, basestring):
+            anonvar = dst
         else:
-            anonvar = dst.name
-        cls = ac.cls_node
-        cls.name = anonvar
+            cls.name = anonvar = dst.name
         stmt = self.stmt([])
         if ac.this_suffixes:
             for jname, tmpname, names in ac.this_suffixes:
@@ -2047,13 +2316,27 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                     ast.Name(self.method_var[-1]),
                 ))
         stmt.nodes.append(cls)
-        name = ast.Name(anonvar)
+        name = ast.Name(cls.name)
+        if hasattr(ac, 'arguments'):
+            args = [self.dispatch(a) for a in ac.arguments]
+        else:
+            args = []
+        if anonvar.find('.') >= 0:
+            ass = ast.AssAttr(
+                ast.Name(anonvar.split('.')[0]),
+                anonvar.split('.', 1)[1],
+                'OP_ASSIGN',
+            )
+        else:
+            self.addLocal(name.name, None, None, None)
+            ass = ast.AssName(anonvar, 'OP_ASSIGN')
         stmt.nodes.append(
             ast.Assign(
-                [ast.AssName(anonvar, 'OP_ASSIGN')],
+                [ass],
                 self.fixCallFunc(
                     ac.java_node,
                     name,
+                    args,
                 ),
             ),
         )
@@ -2065,11 +2348,11 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             arguments = [self.dispatch(a) for a in e.arguments]
         if isinstance(node, basestring):
             if scoped:
-                node = self.scoped(node, True)
+                node = self.scoped(node, callable=True)
         elif isinstance(node, ast.Name):
             if scoped:
                 n = node
-                node = self.scoped(node.name, True)
+                node = self.scoped(node.name, callable=True)
                 node.comments = n.comments
         elif isinstance(node, AnonymousClass):
             raise AstError(e, "AnonymousClass")
@@ -2273,7 +2556,11 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         attrib_map = self.attrib_map
         if isinstance(e.node, jast.QualifiedIdentifier):
             self.attrib_map = {}
-        node = self.dispatch(e.node)
+            node = self.dispatch(e.node, callable=True)
+        elif isinstance(e.node, jast.Identifier):
+            node = self.dispatch(e.node, callable=True)
+        else:
+            node = self.dispatch(e.node)
         self.attrib_map = attrib_map
         return self.fixCallFunc(e, node)
 
@@ -2281,8 +2568,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         return self.dispatch(e.node)
 
     def visitClass(self, e):
-        if self.getClassDepth() == 0 or \
-           (not self.opts.as_module and self.getClassDepth() == 1):
+        if self.getClassDepth() - self.opts.as_module <= 0:
             class_name = self.addGlobal(e.name, None, e, None)#, e.modifiers)
         else:
             class_name = self.addLocal(e.name, None, e, None)#, e.modifiers)
@@ -2294,13 +2580,13 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             else:
                 extends = [e.extends]
             for extend in extends:
-                base = self.dispatch(extend)
+                base = self.dispatch(extend, test_globals=True)
                 assert isinstance(base, Type)
                 base = self.mapType(base.name)
                 bases.append(base)
         if hasattr(e, 'implements') and e.implements is not None:
             for impl in e.implements:
-                base = self.dispatch(impl)
+                base = self.dispatch(impl, test_globals=True)
                 assert isinstance(base, Type)
                 base = self.mapType(base.name)
                 bases.append(base)
@@ -2315,34 +2601,16 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             stmt,
             e.lineno
         )
-        self.pushClassName(class_name)
+        self.pushClassName(class_name, class_node)
         self.pushState()
-        class_init = self.class_init = []
         self.analysing += 1
         for n in e.members:
             self.append_to_class_init = False
             node = self.dispatch(n)
-            if self.append_to_class_init:
-                assert isinstance(node, ast.Stmt)
-                assert len(node.nodes) == 1
-                assnode = node.nodes[0]
-                assert isinstance(assnode, ast.Assign)
-                assert len(assnode.nodes) == 1
-                dst = assnode.nodes[0]
-                assert isinstance(dst, ast.AssName)
-                assnode.nodes[0] = ast.AssAttr(
-                    ast.Name('self'),
-                    ast.Name(dst.name),
-                    dst.flags,
-                )
-                if node.comments:
-                    comments = node.comments
-                    node.comments = None
-                self.class_init.append(node)
         state = self.popState()
         self.locals = state.locals
         if self.opts.add_get_package:
-            if self.opts.as_module and self.getClassDepth() == 2:
+            if self.opts.as_module and self.getClassDepth() == 1:
                 deco = None
                 args = []
             else:
@@ -2357,20 +2625,33 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 None,
                 ast.Stmt([ast.Return(ast.Const(self.package_name))]),
             ))
-        if class_init:
-            method = self.getMethod('__init__')
-            if method is not None:
-                method.class_init = class_init
-                class_init = None
+        class_init = []
+        init_method = self.getMethod('__init__')
+        if init_method is not None:
+            init_method.class_init = [ast.Stmt(class_init)]
+        init_method_inserted_at = None
         for n in e.members:
-            if class_init and isinstance(n, jast.Method):
+            if init_method is None and isinstance(n, jast.Method):
                 # Insert the __init__ method before all
                 # other methods, but after some attibute
                 # definitions (if any)
                 # This method is inserted if there is some 
                 # code to be inserted in the __init__ and
                 # there's no __init__ defined.
-                class_init.append(ast.CallFunc(
+                init_method = ast.Function(
+                    None,
+                    '__init__',
+                    [
+                        ast.Name('self'),
+                        ast.Name('args'),
+                        ast.Name('kwargs'),
+                    ],
+                    [],
+                    ast.CO_VARARGS|ast.CO_VARKEYWORDS,
+                    None,
+                    ast.Stmt([ast.Stmt(class_init)]),
+                )
+                init_method.code.nodes.append(ast.CallFunc(
                     ast.Getattr(
                         ast.CallFunc(
                             ast.Name('super'),
@@ -2385,26 +2666,29 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                     ast.Name('args'),
                     ast.Name('kwargs'),
                 ))
-                node = ast.Function(
-                    None,
-                    '__init__',
-                    [
-                        ast.Name('self'),
-                        ast.Name('args'),
-                        ast.Name('kwargs'),
-                    ],
-                    [],
-                    ast.CO_VARARGS|ast.CO_VARKEYWORDS,
-                    None,
-                    ast.Stmt(class_init),
-                )
-                stmt.nodes.append(node)
-                class_init = None
+                init_method_inserted_at = len(stmt.nodes)
+                stmt.nodes.append(init_method)
             try:
                 depth = self.getStackDepth()
                 self.append_to_class_init = False
                 node = self.dispatch(n)
                 if self.append_to_class_init:
+                    if isinstance(node, ast.Class):
+                        pass
+                    else:
+                        assert isinstance(node, ast.Stmt)
+                        assert len(node.nodes) == 1
+                        assnode = node.nodes[0]
+                        assert isinstance(assnode, ast.Assign)
+                        assert len(assnode.nodes) == 1
+                        dst = assnode.nodes[0]
+                        assert isinstance(dst, ast.AssName)
+                        assnode.nodes[0] = ast.AssAttr(
+                            ast.Name('self'),
+                            ast.Name(dst.name),
+                            dst.flags,
+                        )
+                    class_init.append(node)
                     comments = node.comments
                     if comments:
                         if len(stmt.nodes) == 0:
@@ -2424,14 +2708,48 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                     stmt.nodes.append(node)
             except IgnoreMethod:
                 self.setStackDepth(depth)
+        if init_method_inserted_at is not None and not class_init:
+            del(stmt.nodes[init_method_inserted_at])
+        if self.this_suffixes:
+            if self.this_suffixes[-1][2][0] == class_name:
+                self.this_suffixes.pop()
+            else:
+                self.append_to_class_init = True
         self.flatten_stmt(stmt, True)
+        cls = self.class_stack[-1]
         self.popClassName()
-        if self.opts.as_module and self.getClassDepth() == 1:
+        if self.opts.as_module and self.getClassDepth() == 0:
             if doc:
                 node = ast.EmptyNode()
                 node.comments = [doc]
                 stmt.nodes.insert(0, node)
             return stmt
+        if False and cls.to_method:
+            this_name = '%s_this' % cls.name
+            code = ast.Stmt([
+                class_node,
+                ast.Return(
+                    ast.CallFunc(
+                        ast.Name(cls.name),
+                        [],
+                        ast.Name('args'),
+                        ast.Name('kwargs'),
+                    )
+                ),
+            ])
+            class_node = ast.Function(
+                None,
+                cls.name,
+                [
+                    ast.Name(this_name),
+                    ast.Name('args'),
+                    ast.Name('kwargs'),
+                ],
+                [],
+                ast.CO_VARARGS|ast.CO_VARKEYWORDS,
+                None,
+                code,
+            )
         return class_node
 
     def visitClassBlock(self, e):
@@ -2444,7 +2762,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         analysing = self.analysing
         self.analysing = 1
         name, init = self.getTmpVar(None, 0)
-        cls_type = self.dispatch(e.type)
+        cls_type = self.dispatch(e.type, test_globals=True)
         assert isinstance(cls_type, Type)
         cls_type = cls_type.name
         node = None
@@ -2454,10 +2772,13 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 ast.Name(cls_type),
                 scoped=False,
             )
-        self.pushClassName(name)
+        self.addLocal(name, None, e, None)
+        class_node = ast.Class(name, [cls_type], None, None)
+        self.pushClassName(name, class_node)
         body = self.stmt(e.nodes, False)
         self.analysing = 0
         body = self.stmt(e.nodes, False)
+        class_node.code = body
         self.popClassName()
         self.analysing = analysing
         _this_suffixes = self.this_suffixes
@@ -2465,15 +2786,39 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         if node is not None:
             return node
         name, init = self.getTmpVar(None, 0)
+        self.addLocal(name, None, e, None)
         return AnonymousClass(
-            ast.Class(name, [cls_type], None, body),
+            class_node,
             e,
             _this_suffixes,
         )
 
-    def visitClassOrInterfaceType(self, e):
+    def visitClassOrInterfaceType(self, e, test_globals=False):
         names = [t[0] for t in e.types]
-        names[0] = self.scoped(names[0], as_string=True)
+        def find_clsname(names):
+            for clsname in self.class_stack[0].node.bases:
+                fpath = self.globals[clsname].imp_path
+                g = file_globals.get(fpath)
+                if g is not None:
+                    for m in g[clsname].jtype.members:
+                        if m.name == names[0]:
+                            return clsname
+            return clsname
+
+        base = self.scoped(names[0], test_globals=test_globals, as_string=True)
+        if base.startswith('SELF.'):
+            if len(names) > 1:
+                return Type('%s.%s' % (
+                    self.addTypeImport('.'.join(names)), 
+                    names[-1],
+                ))
+            if len(self.class_stack) > 0:
+                clsname = find_clsname(names)
+                base = "%s.%s" % (
+                    clsname,
+                    base[5:]
+                )
+        names[0] = base
         return Type('.'.join(names))
 
     def visitClassSuffix(self, e):
@@ -2556,15 +2901,10 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         return ast.EmptyNode()
 
     def visitEnum(self, e):
-        if self.getClassDepth() == 1:
-            e.name = self.addGlobal(e.name, None, e, e.modifiers)
-        self.pushClassName(e.name)
-        self.pushState()
-        self.analysing += 1
-        for n in e.members:
-            self.dispatch(n)
-        state = self.popState()
-        self.locals = state.locals
+        if self.getClassDepth() - self.opts.as_module <= 0:
+            e.name = self.addGlobal(e.name, None, e, None)#, e.modifiers)
+        else:
+            e.name = self.addLocal(e.name, None, e, None)#, e.modifiers)
         bases = ['object']
         doc = self.parseComment(e.doc)
         stmt = self.stmt([])
@@ -2575,11 +2915,20 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             stmt,
             e.lineno
         )
+        self.pushClassName(e.name, class_node)
+        self.pushState()
+        self.analysing += 1
+        self.enum_methods.append([])
+        for n in e.members:
+            self.dispatch(n)
+        state = self.popState()
+        self.locals = state.locals
         values = []
         for n in e.constants:
             node = self.dispatch(n)
-            values.append(ast.Name(node.nodes[0].name))
-            stmt.nodes.append(node)
+            if not isinstance(node, ast.EmptyNode):
+                values.append(ast.Name(node.nodes[0].name))
+                stmt.nodes.append(node)
         hasConstructor = False
         for n in e.members:
             try:
@@ -2629,6 +2978,30 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 ),
             ))
             class_node = ast.Stmt(nodes)
+        enum_methods = self.enum_methods.pop()
+        if enum_methods:
+            stmt = ast.Stmt([class_node])
+            tmpvar = self.getTmpVar()[0]
+            for mname, mnode in enum_methods:
+                a = AnonymousClass(
+                    ast.Class(tmpvar, [class_node.name], None, mnode),
+                    e,
+                    [],
+                )
+                self.addLocal(tmpvar, None, None, None)
+                cls, a = self.anonClass(a, '%s.%s' % (class_node.name, mname))
+                stmt.nodes.append(cls)
+                stmt.nodes.append(ast.CallFunc(
+                    ast.Getattr(
+                        ast.Name(class_node.name),
+                        ast.Getattr(
+                            ast.Name('_values'),
+                            'append',
+                        ),
+                    ),
+                    [ast.Getattr(ast.Name(class_node.name), mname)],
+                ))
+            return stmt
         return class_node
 
     def visitEnumConstant(self, e):
@@ -2637,14 +3010,26 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         right = ast.Const(name)
         comments = None
         if len(e.nodes) > 0:
-            self.warning(e.lineno, 'Cannot handle nodes in enum constants')
+            cannot_handle = True
             if len(e.nodes) == 1 and isinstance(e.nodes[0], jast.Method):
-                expr = e.nodes[0].body[0]
-                if isinstance(expr, jast.Return):
-                    right = self.dispatch(expr.expr)
-            right.comments = ['%s: EnumConstant (line: %s)' % (
-                fixme, e.lineno,
-            )]
+                class_node = ast.EmptyNode()
+                self.pushClassName('-', None)
+                self.pushState()
+                save_analysing = self.analysing
+                self.analysing = 1
+                meth = self.dispatch(e.nodes[0])
+                self.analysing = 0
+                meth = self.dispatch(e.nodes[0])
+                self.analysing = save_analysing
+                self.enum_methods[-1].append([name, meth])
+                self.popState()
+                self.popClassName()
+                return class_node
+            if cannot_handle:
+                self.warning(e.lineno, 'Cannot handle nodes in enum constants')
+                right.comments = ['%s: EnumConstant (line: %s)' % (
+                    fixme, e.lineno,
+                )]
         if not e.arguments:
             node = ast.Assign(
                 [ast.AssName(name, 'OP_ASSIGN')],
@@ -2804,7 +3189,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         node.comments_done = [e]
         return node
 
-    def visitIdentifier(self, e):
+    def visitIdentifier(self, e, callable=False):
         if e.name == 'this':
             if len(self.locals) == self.class_locals[-1] + 1:
                 node = ast.Name('self')
@@ -2818,7 +3203,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 [ast.Name(self.getClassName()), ast.Name(self.method_var[-1])],
             )
             return node
-        name = self.scoped(e.name)
+        name = self.scoped(e.name, callable=callable)
         return name
 
     def visitIf(self, e):
@@ -2982,7 +3367,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
     def visitParExpr(self, e):
         return self.dispatch(e.node)
 
-    def visitPrimitiveType(self, e):
+    def visitPrimitiveType(self, e, test_globals=False):
         return Type(e.name)
 
     def visitPostOperator(self, e):
@@ -2994,23 +3379,28 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         args = [self.dispatch(e.node)]
         return self.libCallGlobalsAndLocals(fname, args)
 
-    def visitQualifiedIdentifier(self, e):
+    def visitQualifiedIdentifier(self, e, callable=False):
         names = self.mapQualifiedName(e.name).split('.')
         if names[0] == 'this':
             names[0] = self.method_var[-1]
             if self.hasClassLocal(names[1]):
                 names[1] = self.getClassLocal(names[1]).pyname
         if names[-1] == 'this':
+            assert len(names) == 2
+            class_name = names[0]
+            idx = self.class_names.index(class_name)
             name = '_%s' % '_'.join(names)
             value = (e.name, name, names)
             if not value in self.this_suffixes:
                 self.this_suffixes.append(value)
-            return ast.Name(name)
+            node = ast.Name(name)
+            node.class_locals = self.locals[self.class_locals[idx]]
+            return node
         issuper = names[0] == 'super'
         if issuper:
             raise AstError(e, 'issuper')
             names.pop(0)
-        node = self.scoped('.'.join(names))
+        node = self.scoped('.'.join(names), callable=callable)
         if issuper:
             node = self.fixCallFunc(
                 e,
@@ -3045,6 +3435,10 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             cls, name = self.anonClass(left)
             cls.nodes.append(ast.Getattr(name, right))
             return cls
+        if isinstance(right, ast.Name) and \
+           hasattr(left, 'class_locals') and \
+           right.name in left.class_locals:
+            right.name = left.class_locals[right.name].pyname
         return ast.Getattr(left, right)
 
     def visitShiftExpr(self, e):
@@ -3193,8 +3587,8 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             node = ast.TryFinally(node, finally_block)
         return node
 
-    def visitType(self, e):
-        return self.dispatch(e.type)
+    def visitType(self, e, test_globals=False):
+        return self.dispatch(e.type, test_globals=test_globals)
 
     def visitTypedSuffix(self, e):
         left = self.dispatch(e.left)

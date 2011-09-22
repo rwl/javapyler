@@ -125,6 +125,8 @@ def parse(parser_class, src, dst, options):
         raise
 
 def main(parser_class, options, args):
+    progress = True
+    n = 0
     if not hasattr(options, 'config'):
         setattr(options, 'config', None)
     if len(args) == 0:
@@ -135,10 +137,16 @@ def main(parser_class, options, args):
         if os.path.isdir(arg):
             for f in os.listdir(arg):
                 if f.endswith(".java"):
+                    n += 1
                     fpath = os.path.join(arg, f)
+                    if progress:
+                        sys.stdout.write('\r%d %-20s' % (n, f[:19]))
+                        sys.stdout.flush()
                     parse(parser_class, fpath, None, options)
         else:
             parse(parser_class, arg, None, options)
+    if progress:
+        sys.stdout.write('\n')
     if options.timing:
         print timing
 
