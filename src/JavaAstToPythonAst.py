@@ -2725,7 +2725,10 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 stmt.nodes.insert(0, node)
             return stmt
         if cls.to_method:
-            this_name = '%s_this' % cls.move_to_method[0][0].name
+            this_name = cls.move_to_method[0][0].name
+            for mm in cls.move_to_method[1:]:
+                assert mm[0].name == this_name
+            this_name = '%s_this' % this_name
             code = ast.Stmt([
                 class_node,
                 ast.Return(
