@@ -1432,7 +1432,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
     def scoped(self, name, test_globals=False, callable=False, as_string=False):
         debug = 0
         debug_on = []
-        #debug_on = ['Coordinates']
+        #debug_on = ['currentActivity']
         for d in debug_on:
             if name.find(d) >= 0:
                 debug = 1
@@ -3392,7 +3392,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             assert len(names) == 2
             class_name = names[0]
             idx = self.class_names.index(class_name)
-            name = '_%s' % '_'.join(names)
+            name = '_'.join(names)
             value = (e.name, name, names)
             if not value in self.this_suffixes:
                 self.this_suffixes.append(value)
