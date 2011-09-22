@@ -2713,8 +2713,8 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         if self.this_suffixes:
             if self.this_suffixes[-1][2][0] == class_name:
                 self.this_suffixes.pop()
-            else:
-                self.append_to_class_init = True
+            #else:
+            #    self.append_to_class_init = True
         self.flatten_stmt(stmt, True)
         cls = self.class_stack[-1]
         self.popClassName()
@@ -2724,8 +2724,8 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 node.comments = [doc]
                 stmt.nodes.insert(0, node)
             return stmt
-        if False and cls.to_method:
-            this_name = '%s_this' % cls.name
+        if cls.to_method:
+            this_name = '%s_this' % cls.move_to_method[0][0].name
             code = ast.Stmt([
                 class_node,
                 ast.Return(
