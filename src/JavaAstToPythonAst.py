@@ -582,7 +582,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             if self.getClassDepth() <= 1 and len(self.locals) <= 3:
                 return self.addGlobal(name, pnode, jtype, modifiers)
         clashed = False
-        if len(self.locals) == self.class_locals[-1] + 1 and \
+        if self.localsIsClassLocals() and \
            pyname in self.methods[-1]:
             pyname = self.clashRenameVar(name, pnode, jtype, modifiers)
             if name != pyname:
@@ -635,11 +635,13 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         depth = self.class_locals[depth]
         return name in self.locals[depth]
 
+    def localsIsClassLocals(self):
+        return len(self.locals) == self.class_locals[-1] + 1
+
     def renameVar(self, name, pnode, jtype, modifiers):
         if isinstance(modifiers, list):
             if ('private' in modifiers) or \
-               (not modifiers and \
-                len(self.locals) - 1 == self.class_locals[-1]):
+               (not modifiers and self.localsIsClassLocals()):
                 return '%s%s' % (self.prefix_private_attrs, name)
         if name in self.reserved_words:
             return '%s_' % name
@@ -702,6 +704,8 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
         return [name]
 
     def pushClassName(self, name, node):
+        #if self.class_names and self.class_names[-1] == name:
+        #    raise ValueError(name)
         self.descend()
         self.methods.append({})
         self.class_locals.append(len(self.locals) - 1)
@@ -1432,7 +1436,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
     def scoped(self, name, test_globals=False, callable=False, as_string=False):
         debug = 0
         debug_on = []
-        #debug_on = ['currentActivity']
+        #debug_on = ['getNextActivity']
         for d in debug_on:
             if name.find(d) >= 0:
                 debug = 1
@@ -1473,6 +1477,14 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             self.block_self_scope = False
             names[0] = self.getLocal(base_name).pyname
             return pynode(names)
+        if callable and len(names) == 1:
+            method = self.class_stack[-1].methods.get(base_name)
+            if method is not None:
+                self.block_self_scope = False
+                names[0] = method.pyname
+                if not self.localsIsClassLocals():
+                    names = [self.method_stack[-1].method_var] + names
+                return pynode(names)
         if self.block_self_scope:
             self.block_self_scope = False
             return pynode(names)
@@ -1483,30 +1495,19 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
             depth -= 1
             cls = self.class_stack[depth]
             if debug: print base_name, 'cls:', cls
-            if callable:
-                if base_name in cls.methods:
-                    method = cls.methods[base_name]
-                    names[0] = method.pyname
-                    if depth == max_depth:
-                        if self.method_stack:
-                            names = [self.method_stack[-1].method_var] + names
-                    else:
-                        name_base = cls.name + '_this'
-                        names = [name_base] + names
-                        method.class_this[name_base] = [
-                            method.method_var,
-                            name_base + '_BOO',
-                        ]
-                    return pynode(names)
-            if base_name in cls.locals:
-                if debug: print base_name, 'in cls.locals:', base_name in cls.locals
+            store = None
+            if callable and base_name in cls.methods:
+                store = cls.methods
+            elif base_name in cls.locals:
+                store = cls.locals
+            if store is not None:
                 if depth != max_depth:
                     self.class_stack[depth + 1].to_method = True
-                localvar = cls.locals[base_name]
+                localvar = store[base_name]
                 names[0] = localvar.pyname
                 method = None
                 for method in reversed(self.method_stack):
-                    if debug: print 'base_name:', base_name, cls, method.class_stack, self.class_stack
+                    if debug: print 'base_name:', base_name, cls, method.class_stack, self.class_stack, self.method_stack
                     if method.class_stack[-1] is cls:
                         if debug: print base_name, 'is cls:', cls
                         break
@@ -1514,11 +1515,16 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 if debug: print 'method:', method
                 if method is None:
                     name_base = cls.name + '_this'
-                    self.class_stack[depth + 1].moveToMethod(
+                    if len(self.class_stack) < depth + 2:
+                        if debug: print name_base, 'len(self.class_stack), depth:', len(self.class_stack), depth
+                        pass
+                    else:
+                        self.class_stack[depth + 1].moveToMethod(
                         cls, cls.initMethod(),
                     )
                     names = [name_base] + names
                 else:
+                    if debug: print base_name, 'max_depth, depth:', max_depth, depth
                     if depth == max_depth:
                         names = [method.method_var] + names
                     elif False and (localvar.modifiers is not None and
@@ -2271,12 +2277,12 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 del(method.class_init[0])
             if method.class_init:
                 code.nodes = method.class_init + code.nodes
-        #if method.class_this:
-        #    for src, dst in method.class_this.values():
-        #        code.nodes.insert(0, ast.Assign(
-        #            [ast.AssName(dst, 'OP_ASSIGN')],
-        #            ast.Name(src),
-        #        ))
+        if method.class_this:
+            for src, dst in method.class_this.values():
+                code.nodes.insert(0, ast.Assign(
+                    [ast.AssName(dst, 'OP_ASSIGN')],
+                    ast.Name(src),
+                ))
         if method.assigned_globals:
             assert isinstance(code, ast.Stmt)
             code.nodes.insert(0, ast.Global(method.assigned_globals.keys()))
@@ -2753,6 +2759,12 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                 None,
                 code,
             )
+            # Convert to statement and add an empty node
+            # which will hold comments (if any) that are
+            # supposed to come after the class definition
+            return ast.Stmt(
+                [class_node, ast.EmptyNode()],
+            )
         return class_node
 
     def visitClassBlock(self, e):
@@ -3194,7 +3206,7 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
 
     def visitIdentifier(self, e, callable=False):
         if e.name == 'this':
-            if len(self.locals) == self.class_locals[-1] + 1:
+            if self.localsIsClassLocals():
                 node = ast.Name('self')
                 self.append_to_class_init = True
                 return node
