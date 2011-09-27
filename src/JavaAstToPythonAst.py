@@ -1234,18 +1234,18 @@ class JavaAstToPythonAst(MapAttribute, MapMethod, MapQualifiedName, MapType):
                     self.addJavaLib(fname)
                     return self.libCallGlobalsAndLocals(fname, args)
             compare = None
-            if op == '==':
-                compare = '=='
-                if isinstance(right, jast.Literal) and right.type == 'null':
-                    compare = 'is'
-                elif isinstance(left, jast.Literal) and left.type == 'null':
-                    compare = 'is'
-            elif op == '!=':
-                compare = '!='
-                if isinstance(right, jast.Literal) and right.type == 'null':
-                    compare = 'is not'
-                elif isinstance(left, jast.Literal) and left.type == 'null':
-                    compare = 'is not'
+            if op in ['==', '!=']:
+                compare = op
+                compare_override = 'is' if op == '==' else 'is not'
+                for side in left, right:
+                    if isinstance(side, jast.Literal):
+                        if side.type == 'null':
+                            compare = compare_override
+                            break
+                    elif isinstance(side, jast.Identifier):
+                        if side.name == 'this':
+                            compare = compare_override
+                            break
             else:
                 compare = op
             if compare is not None:
